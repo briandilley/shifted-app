@@ -99,7 +99,11 @@ test('"Export configuration…" saves the file form, and the import reads it', a
   const settings = await settingsWindowPage(shifted)
   await settings.getByRole('button', { name: ONE }).click()
   await settings.getByLabel('Nickname').fill('Personal')
-  await settings.getByRole('radio', { name: 'Purple' }).check()
+  // The swatches show the saved color, so the radio is checked after the main process
+  // saves it: click, then wait.
+  const purple = settings.getByRole('radio', { name: 'Purple' })
+  await purple.click()
+  await expect(purple).toBeChecked()
   await expect.poll(() => readConfig(userDataDir).accounts[0]?.color).toBe('#A142F4')
   await settings.getByRole('button', { name: 'General' }).click()
 

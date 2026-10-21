@@ -230,8 +230,11 @@ test('rename an account in the configuration window: the sidebar shows the nickn
   await expect(account).toHaveAttribute('title', `Work\n${TWO}`)
   await expect(sidebarAccount(mainWindow, 'Work')).toBeVisible()
 
-  // A new color shows in the ring of the avatar at once.
-  await settings.getByRole('radio', { name: 'Purple' }).check()
+  // A new color shows in the ring of the avatar at once. The swatches show the saved
+  // color, so the radio is checked after the main process saves it: click, then wait.
+  const purpleSwatch = settings.getByRole('radio', { name: 'Purple' })
+  await purpleSwatch.click()
+  await expect(purpleSwatch).toBeChecked()
   await expect.poll(() => readConfig(userDataDir).accounts[1]?.color).toBe('#A142F4')
   await expect(account.locator('[data-color]')).toHaveAttribute('data-color', '#A142F4')
 

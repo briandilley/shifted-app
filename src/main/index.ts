@@ -161,7 +161,9 @@ function createMainWindow(options: MainWindowOptions): BrowserWindow {
     if (quitting) return
     event.preventDefault()
     if (options.closeQuits) {
-      app.quit()
+      // Quit after this close event. Electron cancels a quit that starts inside a `close`
+      // handler that prevents the close, so `app.quit()` here would do nothing.
+      setImmediate(() => app.quit())
       return
     }
     // A window in full screen leaves a black screen on macOS if it hides at once.

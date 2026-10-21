@@ -34,13 +34,15 @@ jobs:
 
       # Electron's Chromium sandbox needs unprivileged user namespaces. Ubuntu 24.04 turns
       # them off for programs without an AppArmor profile. `xvfb-run` gives Electron a
-      # display, and D-Bus gives it a session bus.
+      # display, and D-Bus gives it a session bus. Electron shows notifications on Linux
+      # with libnotify, which every Linux desktop has but the runner does not. Without it,
+      # `Notification.isSupported()` is false.
       - name: Prepare Linux for Electron
         if: runner.os == 'Linux'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo apt-get update
-          sudo apt-get install -y xvfb dbus-x11
+          sudo apt-get install -y xvfb dbus-x11 libnotify4
 
       - name: Unit tests
         run: npm test

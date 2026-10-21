@@ -94,58 +94,66 @@ test('the sign-in window is 480 by 720 points, with the title "Sign in"', async 
   expect(signInWindow).toEqual({ size: [480, 720], title: 'Sign in' })
 })
 
-test('the microphone: Shifted asks once, remembers the answer, and the account page resets it', async ({
-  shifted,
-  mainWindow,
-  fakeGoogle,
-  userDataDir
-}) => {
-  await addAccountAndSignIn(shifted, mainWindow, fakeGoogle, ONE)
-  // Shifted asked for no permission at startup or during sign-in.
-  expect(readConfig(userDataDir).accounts[0]?.pagePermissions ?? {}).toEqual({})
-  await answerPermissionQuestions(shifted)
-  const gmail = await gmailViewPage(shifted, fakeGoogle)
-  const useMicrophone = async (): Promise<string> => {
-    await gmail.evaluate(() => {
-      const status = document.getElementById('microphone-status')
-      if (status) status.textContent = ''
-      document.getElementById('microphone')?.click()
-    })
+test.describe('with a fake microphone', () => {
+  // A test computer can have no microphone, for example the Windows and Linux runners of
+  // GitHub Actions. Then Chromium answers "NotFoundError" before it asks for permission.
+  // Chromium's fake devices give every computer a microphone. The permission request
+  // still goes to Shifted, so the test still checks the question and the saved answer.
+  test.use({ shiftedArgs: ['--use-fake-device-for-media-stream'] })
+
+  test('the microphone: Shifted asks once, remembers the answer, and the account page resets it', async ({
+    shifted,
+    mainWindow,
+    fakeGoogle,
+    userDataDir
+  }) => {
+    await addAccountAndSignIn(shifted, mainWindow, fakeGoogle, ONE)
+    // Shifted asked for no permission at startup or during sign-in.
+    expect(readConfig(userDataDir).accounts[0]?.pagePermissions ?? {}).toEqual({})
+    await answerPermissionQuestions(shifted)
+    const gmail = await gmailViewPage(shifted, fakeGoogle)
+    const useMicrophone = async (): Promise<string> => {
+      await gmail.evaluate(() => {
+        const status = document.getElementById('microphone-status')
+        if (status) status.textContent = ''
+        document.getElementById('microphone')?.click()
+      })
+      await expect
+        .poll(() => gmail.evaluate(() => document.getElementById('microphone-status')?.textContent))
+        .not.toBe('')
+      return (await gmail.evaluate(
+        () => document.getElementById('microphone-status')?.textContent ?? ''
+      )) as string
+    }
+
+    // The first request asks, and Shifted saves the answer for the account.
+    expect(await useMicrophone()).toBe('NotAllowedError')
+    expect(await permissionQuestions(shifted)).toEqual([
+      `Allow ${ONE} to use your camera and microphone?`
+    ])
     await expect
-      .poll(() => gmail.evaluate(() => document.getElementById('microphone-status')?.textContent))
-      .not.toBe('')
-    return (await gmail.evaluate(
-      () => document.getElementById('microphone-status')?.textContent ?? ''
-    )) as string
-  }
+      .poll(() => readConfig(userDataDir).accounts[0]?.pagePermissions)
+      .toEqual({
+        media: 'deny'
+      })
 
-  // The first request asks, and Shifted saves the answer for the account.
-  expect(await useMicrophone()).toBe('NotAllowedError')
-  expect(await permissionQuestions(shifted)).toEqual([
-    `Allow ${ONE} to use your camera and microphone?`
-  ])
-  await expect
-    .poll(() => readConfig(userDataDir).accounts[0]?.pagePermissions)
-    .toEqual({
-      media: 'deny'
-    })
+    // The second request uses the saved answer and does not ask.
+    expect(await useMicrophone()).toBe('NotAllowedError')
+    expect(await permissionQuestions(shifted)).toHaveLength(1)
 
-  // The second request uses the saved answer and does not ask.
-  expect(await useMicrophone()).toBe('NotAllowedError')
-  expect(await permissionQuestions(shifted)).toHaveLength(1)
+    // The account page shows the saved answer, and "Reset page permissions" forgets it.
+    await chooseFromAccountMenu(shifted, sidebarAccount(mainWindow, ONE), 'Notifications')
+    const settings = await settingsWindowPage(shifted)
+    await expect(settings.getByText('Camera and microphone: Denied')).toBeVisible()
+    const reset = settings.getByRole('button', { name: 'Reset page permissions' })
+    await reset.click()
+    await expect(reset).toBeDisabled()
+    await expect.poll(() => readConfig(userDataDir).accounts[0]?.pagePermissions ?? {}).toEqual({})
 
-  // The account page shows the saved answer, and "Reset page permissions" forgets it.
-  await chooseFromAccountMenu(shifted, sidebarAccount(mainWindow, ONE), 'Notifications')
-  const settings = await settingsWindowPage(shifted)
-  await expect(settings.getByText('Camera and microphone: Denied')).toBeVisible()
-  const reset = settings.getByRole('button', { name: 'Reset page permissions' })
-  await reset.click()
-  await expect(reset).toBeDisabled()
-  await expect.poll(() => readConfig(userDataDir).accounts[0]?.pagePermissions ?? {}).toEqual({})
-
-  // After the reset, the next request asks again.
-  expect(await useMicrophone()).toBe('NotAllowedError')
-  expect(await permissionQuestions(shifted)).toHaveLength(2)
+    // After the reset, the next request asks again.
+    expect(await useMicrophone()).toBe('NotAllowedError')
+    expect(await permissionQuestions(shifted)).toHaveLength(2)
+  })
 })
 
 test('the account page signs out and removes, and the session is in the app data folder', async ({

@@ -1,0 +1,21 @@
+# TEMPORARY debug workflow. Removed before the final commit.
+name: Debug
+on:
+  push:
+    branches: [ci-e2e-fixes]
+jobs:
+  debug:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright test test/e2e/zz-debug.spec.ts --reporter=list
