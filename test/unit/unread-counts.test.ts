@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { unreadBadgeText, type AccountState } from '../../src/shared/api'
+import {
+  defaultNotificationSwitches,
+  defaultQuietHours,
+  unreadBadgeText,
+  type AccountState
+} from '../../src/shared/api'
 import { BADGE_IMAGE_SIZE, drawBadgeBitmap } from '../../src/main/badge-image'
 import {
   appBadgeTotal,
@@ -157,6 +162,8 @@ describe('the badges', () => {
       pagePermissions: {},
       unreadCount,
       unreadWarning,
+      notifications: defaultNotificationSwitches(),
+      quietHours: defaultQuietHours(),
       unreadCountSource: 'automatic',
       unreadFeed: 'primary',
       automaticFeedLearned: false

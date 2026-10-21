@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IpcChannel,
   type GoogleApp,
+  type NotificationKind,
+  type QuietHours,
   type ScreenPickerInfo,
   type SettingsRequest,
   type ShiftedApi,
@@ -50,6 +52,11 @@ const shifted: ShiftedApi = Object.freeze({
     ipcRenderer.send(IpcChannel.resetPagePermissions, accountId),
   setUnreadCountSource: (accountId: string, source: UnreadCountSource) =>
     ipcRenderer.send(IpcChannel.setUnreadCountSource, accountId, source),
+  setNotificationSwitch: (accountId: string, kind: NotificationKind, on: boolean) =>
+    ipcRenderer.send(IpcChannel.setNotificationSwitch, accountId, kind, on),
+  setQuietHours: (accountId: string, quietHours: QuietHours) =>
+    ipcRenderer.send(IpcChannel.setQuietHours, accountId, quietHours),
+  stopSnooze: () => ipcRenderer.send(IpcChannel.stopSnooze),
   getScreenSources: () =>
     ipcRenderer.invoke(IpcChannel.getScreenSources) as Promise<ScreenPickerInfo>,
   chooseScreenSource: (sourceId: string | null) =>

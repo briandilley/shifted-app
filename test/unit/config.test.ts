@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { defaultNotificationSwitches, defaultQuietHours } from '../../src/shared/api'
 import {
   ACCOUNT_COLORS,
   CONFIG_VERSION,
@@ -23,7 +24,9 @@ const ACCOUNT: AccountConfig = {
   lastGoogleApp: 'gmail',
   pagePermissions: {},
   unreadCountSource: 'automatic',
-  automaticFeed: null
+  automaticFeed: null,
+  notifications: defaultNotificationSwitches(),
+  quietHours: defaultQuietHours()
 }
 
 const GENERAL = { askWhereToSave: false }
@@ -42,7 +45,12 @@ describe('ConfigStore', () => {
   })
 
   it('starts with an empty list when the file is missing', () => {
-    expect(store.load()).toEqual({ version: CONFIG_VERSION, general: GENERAL, accounts: [] })
+    expect(store.load()).toEqual({
+      version: CONFIG_VERSION,
+      general: GENERAL,
+      accounts: [],
+      snooze: null
+    })
     expect(existsSync(join(dir, 'config.broken.json'))).toBe(false)
   })
 
@@ -50,7 +58,8 @@ describe('ConfigStore', () => {
     const config: Config = {
       version: CONFIG_VERSION,
       general: { askWhereToSave: true },
-      accounts: [{ ...ACCOUNT, pagePermissions: { media: 'allow', 'clipboard-read': 'deny' } }]
+      accounts: [{ ...ACCOUNT, pagePermissions: { media: 'allow', 'clipboard-read': 'deny' } }],
+      snooze: { until: 1_800_000_000_000 }
     }
     store.save(config)
     const json = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8')) as unknown
@@ -59,26 +68,32 @@ describe('ConfigStore', () => {
   })
 
   it('writes atomically and leaves no temporary file', () => {
-    store.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [ACCOUNT] })
-    store.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [] })
+    store.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [ACCOUNT], snooze: null })
+    store.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [], snooze: null })
     expect(readdirSync(dir)).toEqual(['config.json'])
     expect(store.load().accounts).toEqual([])
   })
 
   it('makes the folder if it does not exist', () => {
     const nested = new ConfigStore(join(dir, 'a', 'b'))
-    nested.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [ACCOUNT] })
+    nested.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [ACCOUNT], snooze: null })
     expect(nested.load().accounts).toEqual([ACCOUNT])
   })
 
   it('keeps a copy of a file that is not JSON and starts with an empty list', () => {
     writeFileSync(join(dir, 'config.json'), '{ this is not json')
-    expect(store.load()).toEqual({ version: CONFIG_VERSION, general: GENERAL, accounts: [] })
+    expect(store.load()).toEqual({
+      version: CONFIG_VERSION,
+      general: GENERAL,
+      accounts: [],
+      snooze: null
+    })
     expect(readFileSync(join(dir, 'config.broken.json'), 'utf8')).toBe('{ this is not json')
     expect(JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'))).toEqual({
       version: 1,
       general: GENERAL,
-      accounts: []
+      accounts: [],
+      snooze: null
     })
   })
 
@@ -118,7 +133,8 @@ describe('parseConfig', () => {
     expect(parseConfig({ version: 1, accounts: [oldAccount] })).toEqual({
       version: 1,
       general: GENERAL,
-      accounts: [ACCOUNT]
+      accounts: [ACCOUNT],
+      snooze: null
     })
   })
 
@@ -147,7 +163,10 @@ describe('parseConfig', () => {
     expect(parseConfig({ version: 1, accounts: [oldAccount] })?.accounts[0]).toEqual({
       ...ACCOUNT,
       unreadCountSource: 'automatic',
-      automaticFeed: null
+      automaticFeed: null,
+      // All three notification switches are on for a new account.
+      notifications: { 'new-mail': true, calendar: true, chat: true },
+      quietHours: { enabled: false, start: '22:00', end: '07:00', days: [] }
     })
   })
 
@@ -165,6 +184,70 @@ describe('parseConfig', () => {
     expect(parseConfig(withSource('spam'))).toBeUndefined()
     expect(parseConfig(withSource('automatic', 'important'))).toBeUndefined()
     expect(parseConfig(withSource('automatic', 3))).toBeUndefined()
+  })
+})
+
+describe('the notification configuration', () => {
+  it('reads a file from phase 04, with no switches, no quiet hours, and no snooze', () => {
+    const oldAccount: Record<string, unknown> = { ...ACCOUNT }
+    delete oldAccount['notifications']
+    delete oldAccount['quietHours']
+    const config = parseConfig({ version: 1, accounts: [oldAccount] })
+    expect(config?.accounts[0]?.notifications).toEqual({
+      'new-mail': true,
+      calendar: true,
+      chat: true
+    })
+    expect(config?.accounts[0]?.quietHours).toEqual({
+      enabled: false,
+      start: '22:00',
+      end: '07:00',
+      days: []
+    })
+    expect(config?.snooze).toBeNull()
+  })
+
+  it('reads the switches, and a missing switch is on', () => {
+    const config = parseConfig({
+      version: 1,
+      accounts: [{ ...ACCOUNT, notifications: { chat: false } }]
+    })
+    expect(config?.accounts[0]?.notifications).toEqual({
+      'new-mail': true,
+      calendar: true,
+      chat: false
+    })
+  })
+
+  it('reads quiet hours, and sorts the days', () => {
+    const quietHours = { enabled: true, start: '18:00', end: '09:00', days: [6, 0, 6] }
+    const config = parseConfig({ version: 1, accounts: [{ ...ACCOUNT, quietHours }] })
+    expect(config?.accounts[0]?.quietHours).toEqual({ ...quietHours, days: [0, 6] })
+  })
+
+  it('reads a snooze until a time and a snooze until it is turned off', () => {
+    expect(parseConfig({ version: 1, accounts: [], snooze: { until: 5 } })?.snooze).toEqual({
+      until: 5
+    })
+    expect(parseConfig({ version: 1, accounts: [], snooze: { until: null } })?.snooze).toEqual({
+      until: null
+    })
+  })
+
+  it('refuses wrong switches, quiet hours, and snooze', () => {
+    const withAccount = (change: Record<string, unknown>): unknown => ({
+      version: 1,
+      accounts: [{ ...ACCOUNT, ...change }]
+    })
+    expect(parseConfig(withAccount({ notifications: { email: true } }))).toBeUndefined()
+    expect(parseConfig(withAccount({ notifications: { chat: 'off' } }))).toBeUndefined()
+    const quiet = defaultQuietHours()
+    expect(parseConfig(withAccount({ quietHours: { ...quiet, start: '24:00' } }))).toBeUndefined()
+    expect(parseConfig(withAccount({ quietHours: { ...quiet, end: '7:00' } }))).toBeUndefined()
+    expect(parseConfig(withAccount({ quietHours: { ...quiet, days: [7] } }))).toBeUndefined()
+    expect(parseConfig(withAccount({ quietHours: { ...quiet, enabled: 1 } }))).toBeUndefined()
+    expect(parseConfig({ version: 1, accounts: [], snooze: { until: 'later' } })).toBeUndefined()
+    expect(parseConfig({ version: 1, accounts: [], snooze: 3 })).toBeUndefined()
   })
 })
 

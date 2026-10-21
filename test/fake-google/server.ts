@@ -25,6 +25,14 @@
  * `POST /control/feed-failure` (or `server.setFeedFailure`) makes every feed answer
  * HTTP 500 until a test turns it off again.
  *
+ * The control route `POST /control/feed-entry` (or `server.addFeedEntry`) adds one new
+ * message to the fake feeds of an address, as when a new email arrives.
+ *
+ * The fake Calendar page has a button `#notify` that calls
+ * `new Notification('Meeting in 10 minutes', ...)`, like a Calendar reminder. The fake
+ * Gmail page has a button `#chat-notify` that makes a web notification, like a Google
+ * Chat message. A click on either notification writes "clicked" into `#notification-status`.
+ *
  * The fake Gmail page also has the links that the link rules handle: a pop-out that opens
  * `about:blank` and writes a fake compose form into it, a link to a fake Calendar event,
  * links to an outside page, a `mailto:` link, a button that asks for the microphone, and
@@ -117,6 +125,15 @@ export interface FakeGoogleState {
   sessions: Map<string, FakeSession>
 }
 
+/** The value that adds one message to the fake feeds (see `POST /control/feed-entry`). */
+export interface FakeFeedEntrySetting {
+  /** The address of the account. Without it, the feeds of every address with no own value. */
+  address?: string
+  /** The feeds that get the message. Without it, the "Whole inbox" and "Primary" feeds. */
+  feeds?: FakeFeedName[]
+  entry: FakeFeedEntry
+}
+
 export interface FakeGoogleServer {
   /** The base URL, with no trailing slash, for example `http://127.0.0.1:4555`. */
   url: string
@@ -125,6 +142,11 @@ export interface FakeGoogleServer {
   signOut(): Promise<void>
   /** Call the control route that sets the count and the entries of a fake feed. */
   setFeed(setting: FakeFeedSetting): Promise<void>
+  /**
+   * Call the control route that adds one message to the fake feeds of an address: the
+   * entry goes first in each feed, and the count of each feed goes up by 1.
+   */
+  addFeedEntry(setting: FakeFeedEntrySetting): Promise<void>
   /**
    * Call the control route that makes every feed fail: `true` or `'http-500'` answers
    * HTTP 500, `'sign-in-redirect'` goes to the sign-in page, and `false` makes it work again.
@@ -378,6 +400,27 @@ document.getElementById('microphone').addEventListener('click', () => {
 })
 `
 
+/** The title of the fake Calendar reminder. */
+export const FAKE_REMINDER_TITLE = 'Meeting in 10 minutes'
+/** The title of the fake Chat message. */
+export const FAKE_CHAT_TITLE = 'Alex Example'
+
+/**
+ * A script that makes a web notification when the button `buttonId` is clicked. A click
+ * on the notification writes "clicked" into `#notification-status`.
+ */
+function notificationScript(buttonId: string, title: string, options: object): string {
+  return `
+document.getElementById(${JSON.stringify(buttonId)}).addEventListener('click', () => {
+  const notification = new Notification(${JSON.stringify(title)}, ${JSON.stringify(options)})
+  window.shiftedTestNotification = notification
+  notification.onclick = () => {
+    document.getElementById('notification-status').textContent = 'clicked'
+  }
+})
+`
+}
+
 /** The links of the fake Gmail page. */
 function fakeGmailLinks(url: URL): string {
   const compose =
@@ -395,8 +438,10 @@ function fakeGmailLinks(url: URL): string {
       <span id="microphone-status"></span>
       <a id="download-link" href="${FAKE_DOWNLOAD_PATH}">Download the report</a>
       <a id="download-new-window-link" href="${FAKE_DOWNLOAD_PATH}" target="_blank">Download the report in a new window</a>
+      <button id="chat-notify" type="button">Fake Chat message</button>
+      <span id="notification-status"></span>
     </nav>
-    <script>${FAKE_GMAIL_SCRIPT}</script>`
+    <script>${FAKE_GMAIL_SCRIPT}${notificationScript('chat-notify', FAKE_CHAT_TITLE, { body: 'Are you free for lunch?', tag: 'chat-1' })}</script>`
 }
 
 /** The routes of the fake server. */
@@ -473,7 +518,11 @@ export const routes: Route[] = [
       sendHtml(
         res,
         'Calendar',
-        `    <h1>Fake Calendar</h1>\n    <p id="address">${escapeHtml(session.address)}</p>`
+        `    <h1>Fake Calendar</h1>
+    <p id="address">${escapeHtml(session.address)}</p>
+    <button id="notify" type="button">Fake reminder</button>
+    <span id="notification-status"></span>
+    <script>${notificationScript('notify', FAKE_REMINDER_TITLE, { body: 'Planning, 10:00 to 10:30', tag: 'reminder-1' })}</script>`
       )
     }
   },
@@ -549,6 +598,37 @@ export const routes: Route[] = [
         return
       }
       state.feeds.set(`${address ?? EVERY_ADDRESS} ${feed}`, { count, entries })
+      res.writeHead(204)
+      res.end()
+    }
+  },
+  {
+    // Control route for tests: add one new message to the fake feeds of an address. The
+    // body is JSON: { address?, feeds?: ["whole-inbox" | "primary" | "important"], entry }.
+    // The entry goes first in each feed, and the count of each feed goes up by 1.
+    method: 'POST',
+    path: '/control/feed-entry',
+    handler: async ({ req, res, state }) => {
+      const body = JSON.parse(await readBody(req)) as Record<string, unknown>
+      const { address, entry } = body
+      const feeds = body['feeds'] ?? ['whole-inbox', 'primary']
+      if (
+        (address !== undefined && typeof address !== 'string') ||
+        !Array.isArray(feeds) ||
+        !feeds.every(isFakeFeedName) ||
+        !isFakeFeedEntry(entry)
+      ) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('Bad feed entry')
+        return
+      }
+      for (const feed of feeds) {
+        const current = fakeFeed(state, address ?? EVERY_ADDRESS, feed)
+        state.feeds.set(`${address ?? EVERY_ADDRESS} ${feed}`, {
+          count: current.count + 1,
+          entries: [entry, ...current.entries]
+        })
+      }
       res.writeHead(204)
       res.end()
     }
@@ -642,6 +722,14 @@ export async function startFakeGoogle(
         body: JSON.stringify(setting)
       })
       if (!response.ok) throw new Error(`The fake feed setting failed: HTTP ${response.status}`)
+    },
+    async addFeedEntry(setting: FakeFeedEntrySetting): Promise<void> {
+      const response = await fetch(`${url}/control/feed-entry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(setting)
+      })
+      if (!response.ok) throw new Error(`The fake feed entry failed: HTTP ${response.status}`)
     },
     async setFeedFailure(fail: boolean | FakeFeedFailure): Promise<void> {
       const response = await fetch(`${url}/control/feed-failure`, {

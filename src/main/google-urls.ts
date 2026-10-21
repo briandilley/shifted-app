@@ -211,3 +211,26 @@ export function isProfilePhotoUrl(url: string): boolean {
     (host) => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`)
   )
 }
+
+/**
+ * The URL that opens one message of the feed in the Gmail Google app.
+ *
+ * The `link` of a feed entry goes to the message in Gmail. Shifted reads it relative to
+ * the URL of the feed, and changes `http:` on the Gmail host to `https:`. If the link is
+ * empty, or the result is not a Gmail link (see `isGmailLink`), Shifted opens the inbox.
+ *
+ * @param link The `href` of the `alternate` link of the feed entry.
+ */
+export function gmailMessageUrl(link: string): string {
+  if (link.trim() === '') return gmailUrl()
+  let url: URL
+  try {
+    url = new URL(link, feedUrl())
+  } catch {
+    return gmailUrl()
+  }
+  if (!testServerUrl() && url.protocol === 'http:' && url.hostname === GMAIL_HOST) {
+    url.protocol = 'https:'
+  }
+  return isGmailLink(url.href) ? url.href : gmailUrl()
+}

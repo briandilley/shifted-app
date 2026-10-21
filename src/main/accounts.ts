@@ -12,8 +12,12 @@ import {
   type AccountStatus,
   type AskedPermission,
   type GoogleApp,
+  type NotificationKind,
   type PermissionAnswer,
+  type QuietHours,
   type ShiftedState,
+  type Snooze,
+  type SnoozeChoice,
   type UnreadCountSource,
   type ViewBounds
 } from '../shared/api'
@@ -23,7 +27,7 @@ import {
   deleteAccountSession,
   flushAccountSession
 } from './account-session'
-import { AccountViews } from './account-views'
+import { AccountViews, type ShownGoogleApp } from './account-views'
 import { ChildWindows } from './child-windows'
 import {
   moveAccount,
@@ -33,10 +37,12 @@ import {
   type ConfigStore
 } from './config'
 import { Downloads } from './downloads'
-import { feedErrorText, readFeed, type FeedFetch, type FeedResult } from './feed'
+import { feedErrorText, readFeed, type FeedEntry, type FeedFetch, type FeedResult } from './feed'
 import { findProfilePhotoUrl, readInboxCount } from './gmail-page'
 import { FEED_LABELS, isProfilePhotoUrl } from './google-urls'
 import type { LinkHandlers } from './link-handlers'
+import { NewMailTracker } from './new-mail'
+import { isSnoozed, snoozeFor } from './notification-rules'
 import type { ProfilePhotos } from './profile-photos'
 import type { ScreenPicker } from './screen-picker'
 import { sessionGet } from './session-fetch'
@@ -50,6 +56,12 @@ function ignore(): void {
 }
 
 export type StateListener = (state: ShiftedState) => void
+
+/** Gets the new messages of one read of the feed of an account. */
+export type NewMailListener = (accountId: string, entries: FeedEntry[]) => void
+
+/** The longest wait that `setTimeout` allows, about 24 days. */
+const MAX_TIMER_MS = 2 ** 31 - 1
 
 /** The result of the last reads of the feed of one account. */
 interface UnreadState {
@@ -73,6 +85,11 @@ export class Accounts {
   private readonly feedChoices = new Set<string>()
   private readonly poller = new UnreadPoller((accountId) => this.readUnreadCount(accountId))
   private readonly listeners = new Set<StateListener>()
+  /** The entry IDs of the feed that Shifted saw for each account, in memory only. */
+  private readonly newMail = new NewMailTracker()
+  private readonly newMailListeners = new Set<NewMailListener>()
+  /** The timer that ends the snooze. */
+  private snoozeTimer: ReturnType<typeof setTimeout> | null = null
   private selectedAccountId: string | null
   private mainWindow: BrowserWindow | null = null
   private views: AccountViews | null = null
@@ -123,14 +140,108 @@ export class Accounts {
     }
     this.selectedAccountId = this.config.accounts[0]?.id ?? null
     this.syncPoller()
+    this.scheduleSnoozeEnd()
   }
 
   state(): ShiftedState {
+    const snooze = this.snooze()
     return {
       accounts: this.config.accounts.map((account) => this.accountState(account)),
       selectedAccountId: this.selectedAccountId,
-      general: { ...this.config.general }
+      general: { ...this.config.general },
+      snooze: snooze ? { ...snooze } : null
     }
+  }
+
+  /** Call the listener with the new messages of each read of the feed of each account. */
+  onNewMail(listener: NewMailListener): () => void {
+    this.newMailListeners.add(listener)
+    return () => {
+      this.newMailListeners.delete(listener)
+    }
+  }
+
+  /** The snooze that runs now, or `null`. */
+  snooze(): Snooze | null {
+    const snooze = this.config.snooze
+    return isSnoozed(snooze, new Date()) ? snooze : null
+  }
+
+  /** Start a snooze of all notifications of all accounts. */
+  setSnooze(choice: SnoozeChoice): void {
+    this.saveSnooze(snoozeFor(choice, new Date()))
+  }
+
+  /** Stop the snooze. */
+  stopSnooze(): void {
+    if (this.config.snooze === null) return
+    this.saveSnooze(null)
+  }
+
+  private saveSnooze(snooze: Snooze | null): void {
+    this.config = { ...this.config, snooze }
+    this.store.save(this.config)
+    this.scheduleSnoozeEnd()
+    this.publish()
+  }
+
+  /**
+   * Forget a snooze that ended, and set a timer for the end of the snooze that runs, so
+   * that the screens and the menus show the end at once.
+   */
+  private scheduleSnoozeEnd(): void {
+    if (this.snoozeTimer) clearTimeout(this.snoozeTimer)
+    this.snoozeTimer = null
+    const snooze = this.config.snooze
+    if (snooze === null) return
+    if (!isSnoozed(snooze, new Date())) {
+      this.config = { ...this.config, snooze: null }
+      this.store.save(this.config)
+      return
+    }
+    if (snooze.until === null) return
+    const delay = Math.min(Math.max(0, snooze.until - Date.now()) + 50, MAX_TIMER_MS)
+    this.snoozeTimer = setTimeout(() => {
+      this.snoozeTimer = null
+      const before = this.config.snooze
+      this.scheduleSnoozeEnd()
+      if (this.config.snooze !== before) this.publish()
+    }, delay)
+  }
+
+  /** Turn one notification switch of the account on or off. */
+  setNotificationSwitch(accountId: string, kind: NotificationKind, on: boolean): void {
+    const account = this.findAccount(accountId)
+    if (!account || account.notifications[kind] === on) return
+    this.updateAccount(accountId, { notifications: { ...account.notifications, [kind]: on } })
+  }
+
+  /** Set the quiet hours of the account. */
+  setQuietHours(accountId: string, quietHours: QuietHours): void {
+    const account = this.findAccount(accountId)
+    if (!account) return
+    const current = account.quietHours
+    if (
+      current.enabled === quietHours.enabled &&
+      current.start === quietHours.start &&
+      current.end === quietHours.end &&
+      current.days.join() === quietHours.days.join()
+    ) {
+      return
+    }
+    this.updateAccount(accountId, { quietHours: { ...quietHours, days: [...quietHours.days] } })
+  }
+
+  /**
+   * The account and the Google app of a Google page, by its web contents: a Gmail or
+   * Calendar view, or a child window. A child window shows a Gmail pop-out, so it counts
+   * as Gmail. `undefined` for any other web contents.
+   */
+  googlePageSource(contents: WebContents): ShownGoogleApp | undefined {
+    const view = this.views?.find(contents)
+    if (view) return view
+    const accountId = this.childWindows.accountOf(contents)
+    return accountId ? { accountId, googleApp: 'gmail' } : undefined
   }
 
   /** One account as the screens of Shifted see it, or `undefined` if it does not exist. */
@@ -217,8 +328,11 @@ export class Accounts {
    * Select the account, show this Google app, and load the URL in its view. The link
    * rules use it, for example for a Calendar link in Gmail. The main window comes to the
    * front.
+   *
+   * @param url The URL to load. Without it, the view keeps its page. A click on a
+   *   Calendar or Chat notification uses that.
    */
-  showInGoogleApp(accountId: string, googleApp: GoogleApp, url: string): void {
+  showInGoogleApp(accountId: string, googleApp: GoogleApp, url?: string): void {
     const account = this.findAccount(accountId)
     const views = this.views
     if (!account || !views || this.removals.has(accountId)) return
@@ -229,7 +343,7 @@ export class Accounts {
     if (account.lastGoogleApp !== googleApp) {
       this.updateAccount(accountId, { lastGoogleApp: googleApp })
     }
-    views.load(accountId, googleApp, url)
+    if (url !== undefined) views.load(accountId, googleApp, url)
     this.updateViews()
     this.publish()
     const window = this.mainWindow
@@ -404,6 +518,7 @@ export class Accounts {
     this.status.delete(accountId)
     this.signedInOnce.delete(accountId)
     this.unread.delete(accountId)
+    this.newMail.forget(accountId)
     this.syncPoller()
     if (this.selectedAccountId === accountId) {
       this.selectedAccountId = this.config.accounts[0]?.id ?? null
@@ -418,6 +533,7 @@ export class Accounts {
     this.views?.close(accountId)
     this.signedInOnce.add(accountId)
     this.setStatus(accountId, 'signed-out')
+    this.newMail.forget(accountId)
     await clearAccountSession(accountId)
     // The badge shows "Signed out" at once.
     this.poller.readNow(accountId)
@@ -450,6 +566,8 @@ export class Accounts {
     // Write the new cookies to disk now, so that the account stays signed in.
     flushAccountSession(accountId).catch(ignore)
     this.status.set(accountId, 'signed-in')
+    // After a sign-in, the first read of the feed only fills the set of seen messages.
+    this.newMail.forget(accountId)
     // Load the views of the account again with the new session. Load Gmail even if the
     // account is not selected, so that Shifted reads its address and its photo.
     this.views?.reload(accountId)
@@ -563,7 +681,19 @@ export class Accounts {
       return 'skipped'
     }
     this.saveUnreadResult(accountId, result)
+    if (result.ok) this.findNewMail(accountId, FEED_LABELS[feed], result.feed.entries)
     return result.ok ? 'ok' : 'error'
+  }
+
+  /**
+   * Compare the entries of a good read with the entries that Shifted saw, and tell the
+   * listeners about the new messages. Snooze and quiet hours do not change the set, so a
+   * message that they stopped does not show later.
+   */
+  private findNewMail(accountId: string, feed: string, entries: FeedEntry[]): void {
+    const fresh = this.newMail.read(accountId, feed, entries)
+    if (fresh.length === 0) return
+    for (const listener of this.newMailListeners) listener(accountId, fresh)
   }
 
   private saveUnreadResult(accountId: string, result: FeedResult): void {
@@ -683,7 +813,9 @@ export class Accounts {
       unreadWarning: this.unread.get(account.id)?.warning ?? null,
       unreadCountSource: account.unreadCountSource,
       unreadFeed: feedToRead(account.unreadCountSource, account.automaticFeed),
-      automaticFeedLearned: account.automaticFeed !== null
+      automaticFeedLearned: account.automaticFeed !== null,
+      notifications: { ...account.notifications },
+      quietHours: { ...account.quietHours, days: [...account.quietHours.days] }
     }
   }
 

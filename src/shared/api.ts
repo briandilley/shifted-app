@@ -132,6 +132,127 @@ export function unreadBadgeText(count: number): string {
   return count > MAX_BADGE_NUMBER ? `${MAX_BADGE_NUMBER}+` : String(count)
 }
 
+/**
+ * The kinds of notifications. Each account has one switch for each kind.
+ *
+ * - `new-mail`: Shifted makes it from the Atom feed.
+ * - `calendar`: a web notification of the Calendar page (a Calendar reminder).
+ * - `chat`: a web notification of the Gmail page (a Google Chat message).
+ */
+export type NotificationKind = 'new-mail' | 'calendar' | 'chat'
+
+/** The kinds of notifications, in the order that the configuration window shows them. */
+export const NOTIFICATION_KINDS: readonly NotificationKind[] = ['new-mail', 'calendar', 'chat']
+
+/** The names of the notification switches on screen. */
+export const NOTIFICATION_KIND_NAMES: Readonly<Record<NotificationKind, string>> = {
+  'new-mail': 'New mail',
+  calendar: 'Calendar reminders',
+  chat: 'Chat messages'
+}
+
+export function isNotificationKind(value: unknown): value is NotificationKind {
+  return value === 'new-mail' || value === 'calendar' || value === 'chat'
+}
+
+/** The three notification switches of an account. All three are on for a new account. */
+export type NotificationSwitches = Record<NotificationKind, boolean>
+
+export function defaultNotificationSwitches(): NotificationSwitches {
+  return { 'new-mail': true, calendar: true, chat: true }
+}
+
+/**
+ * The quiet hours of an account. While they are on, the account shows no notifications:
+ *
+ * - every day from `start` to `end` (the range can cross midnight, for example 22:00 to
+ *   07:00; the same start and end give no daily range), and
+ * - all day on each day in `days`.
+ */
+export interface QuietHours {
+  enabled: boolean
+  /** The start of the daily range, `HH:MM` in 24-hour time. */
+  start: string
+  /** The end of the daily range, `HH:MM` in 24-hour time. The range stops just before it. */
+  end: string
+  /** The days that are quiet all day: 0 is Sunday, 1 is Monday, and so on to 6, Saturday. */
+  days: number[]
+}
+
+export function defaultQuietHours(): QuietHours {
+  return { enabled: false, start: '22:00', end: '07:00', days: [] }
+}
+
+/** The days of the week in the order that the configuration window shows them, Monday first. */
+export const WEEKDAYS: readonly { day: number; name: string; short: string }[] = [
+  { day: 1, name: 'Monday', short: 'Mon' },
+  { day: 2, name: 'Tuesday', short: 'Tue' },
+  { day: 3, name: 'Wednesday', short: 'Wed' },
+  { day: 4, name: 'Thursday', short: 'Thu' },
+  { day: 5, name: 'Friday', short: 'Fri' },
+  { day: 6, name: 'Saturday', short: 'Sat' },
+  { day: 0, name: 'Sunday', short: 'Sun' }
+]
+
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+/** True when the value is a time of day in the form `HH:MM`, from `00:00` to `23:59`. */
+export function isTimeOfDay(value: unknown): value is string {
+  return typeof value === 'string' && TIME_PATTERN.test(value)
+}
+
+/**
+ * Read quiet hours from a value, for example from the configuration file or from an IPC
+ * message.
+ *
+ * @returns The quiet hours, with the days sorted and each day once, or `undefined` if the
+ *   value is not valid.
+ */
+export function parseQuietHours(value: unknown): QuietHours | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const { enabled, start, end, days } = value as Record<string, unknown>
+  if (typeof enabled !== 'boolean' || !isTimeOfDay(start) || !isTimeOfDay(end)) return undefined
+  if (!Array.isArray(days)) return undefined
+  if (
+    !days.every((day) => typeof day === 'number' && Number.isInteger(day) && day >= 0 && day <= 6)
+  ) {
+    return undefined
+  }
+  const unique = [...new Set(days as number[])].sort((a, b) => a - b)
+  return { enabled, start, end, days: unique }
+}
+
+/** The choices of snooze. */
+export type SnoozeChoice = '30-minutes' | '1-hour' | 'tomorrow-8' | 'until-turned-off'
+
+/** The snooze choices, in the order that the menus show them. */
+export const SNOOZE_CHOICES: readonly SnoozeChoice[] = [
+  '30-minutes',
+  '1-hour',
+  'tomorrow-8',
+  'until-turned-off'
+]
+
+/** The names of the snooze choices in the menus. */
+export const SNOOZE_CHOICE_NAMES: Readonly<Record<SnoozeChoice, string>> = {
+  '30-minutes': 'For 30 minutes',
+  '1-hour': 'For 1 hour',
+  'tomorrow-8': 'Until 8:00 tomorrow',
+  'until-turned-off': 'Until I turn it off'
+}
+
+export function isSnoozeChoice(value: unknown): value is SnoozeChoice {
+  return (SNOOZE_CHOICES as readonly unknown[]).includes(value)
+}
+
+/**
+ * Snooze stops all notifications of all accounts. `until` is the end of the snooze, in
+ * milliseconds since 1970 (as `Date.now()` gives), or `null` for "until I turn it off".
+ */
+export interface Snooze {
+  until: number | null
+}
+
 /** The values of the General page of the configuration window. */
 export interface GeneralConfig {
   /** Show a save dialog for each download. Off by default. */
@@ -165,6 +286,10 @@ export interface AccountState {
   unreadFeed: FeedChoice
   /** True when "Automatic" found the feed that matches Gmail and saved it. */
   automaticFeedLearned: boolean
+  /** The notification switches of the account. */
+  notifications: NotificationSwitches
+  /** The quiet hours of the account. */
+  quietHours: QuietHours
 }
 
 /** The state that the screens of Shifted show. */
@@ -172,6 +297,8 @@ export interface ShiftedState {
   accounts: AccountState[]
   selectedAccountId: string | null
   general: GeneralConfig
+  /** The snooze that runs now, or `null` when notifications are not snoozed. */
+  snooze: Snooze | null
 }
 
 /** A rectangle in the window, in points, where a Google page shows. */
@@ -186,7 +313,11 @@ export interface ViewBounds {
 export type SettingsPage = 'general' | 'notifications' | `account/${string}`
 
 /** The field of an account page that gets the keyboard focus. */
-export type SettingsFocus = 'nickname' | 'color'
+export type SettingsFocus = 'nickname' | 'color' | 'notifications'
+
+function isSettingsFocus(value: unknown): value is SettingsFocus {
+  return value === 'nickname' || value === 'color' || value === 'notifications'
+}
 
 /** Which page the configuration window shows, and which field gets the focus. */
 export interface SettingsRequest {
@@ -235,7 +366,7 @@ export function parseSettingsRequest(value: unknown): SettingsRequest | undefine
   if (typeof value !== 'object' || value === null) return undefined
   const { page, focus } = value as Record<string, unknown>
   if (typeof page !== 'string') return undefined
-  if (focus !== undefined && focus !== 'nickname' && focus !== 'color') return undefined
+  if (focus !== undefined && !isSettingsFocus(focus)) return undefined
   const withFocus = (valid: SettingsPage): SettingsRequest =>
     focus === undefined ? { page: valid } : { page: valid, focus }
   if (page === 'general' || page === 'notifications') return withFocus(page)
@@ -283,6 +414,12 @@ export interface ShiftedApi {
   resetPagePermissions(accountId: string): void
   /** Set "Unread count source" of the account. */
   setUnreadCountSource(accountId: string, source: UnreadCountSource): void
+  /** Turn one notification switch of the account on or off. */
+  setNotificationSwitch(accountId: string, kind: NotificationKind, on: boolean): void
+  /** Set the quiet hours of the account. */
+  setQuietHours(accountId: string, quietHours: QuietHours): void
+  /** Stop the snooze. */
+  stopSnooze(): void
   /** The screen picker only: the screens and windows that the person can share. */
   getScreenSources(): Promise<ScreenPickerInfo>
   /** The screen picker only: share this screen or window. `null` shares nothing. */
@@ -323,6 +460,9 @@ export const IpcChannel = {
   setAskWhereToSave: 'shifted:set-ask-where-to-save',
   resetPagePermissions: 'shifted:reset-page-permissions',
   setUnreadCountSource: 'shifted:set-unread-count-source',
+  setNotificationSwitch: 'shifted:set-notification-switch',
+  setQuietHours: 'shifted:set-quiet-hours',
+  stopSnooze: 'shifted:stop-snooze',
   getScreenSources: 'shifted:get-screen-sources',
   chooseScreenSource: 'shifted:choose-screen-source'
 } as const

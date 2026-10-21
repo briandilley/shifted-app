@@ -1,12 +1,17 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import type { Snooze } from '../shared/api'
 import { Accounts } from './accounts'
 import { AppBadge } from './app-badge'
-import { setAppMenu } from './app-menu'
+import { buildSnoozeMenu, setAppMenu, type AppMenuActions } from './app-menu'
 import { ConfigStore } from './config'
+import { gmailMessageUrl, gmailUrl } from './google-urls'
 import { registerIpc } from './ipc'
+import { newMailNotifications } from './new-mail'
+import { iconFromDataUrl, Notifier } from './notifications'
+import { registerPageNotifications } from './page-notifications'
 import { ProfilePhotos } from './profile-photos'
 import { ScreenPicker } from './screen-picker'
 import { SettingsWindow } from './settings-window'
@@ -18,6 +23,7 @@ import {
 import { appBadgeTotal } from './unread-counts'
 import { applyUserAgent } from './user-agent'
 
+/** The bundle identifier of Shifted. See "Name" in `docs/spec/PRODUCT.md`. */
 const APP_ID = 'io.github.briandilley.shifted'
 
 // Tests give each run its own user data folder, so that tests never share state.
@@ -67,7 +73,12 @@ app.on('web-contents-created', (_event, contents) => {
 })
 
 void app.whenReady().then(() => {
-  electronApp.setAppUserModelId(APP_ID)
+  // Windows shows the notifications of an app only with an Application User Model ID.
+  // In development, Electron's own executable stands for Shifted, as the Electron
+  // documentation says.
+  if (process.platform === 'win32') {
+    app.setAppUserModelId(is.dev ? process.execPath : APP_ID)
+  }
 
   if (process.platform === 'darwin' && is.dev) {
     app.dock?.setIcon(icon)
@@ -87,11 +98,77 @@ void app.whenReady().then(() => {
   )
   const settings = new SettingsWindow(accounts)
   registerIpc(accounts, settings, screenPicker)
-  setAppMenu({ openSettings: () => settings.open() })
   // The app badge shows the sum of the unread counts of all accounts.
   const badge = new AppBadge()
   accounts.subscribe((state) => badge.update(appBadgeTotal(state.accounts)))
   createMainWindow(accounts, badge)
+
+  /** Show the main window. On macOS, it can be closed while Shifted runs. Open it again. */
+  const ensureMainWindow = (): void => {
+    if (
+      !BrowserWindow.getAllWindows().some((window) => accounts.isMainScreen(window.webContents))
+    ) {
+      createMainWindow(accounts, badge)
+    }
+  }
+
+  // The app menu, with the "Snooze" submenu. It changes when the snooze changes.
+  const menuActions: AppMenuActions = {
+    openSettings: () => settings.open(),
+    snooze: (choice) => accounts.setSnooze(choice),
+    stopSnooze: () => accounts.stopSnooze(),
+    showSnoozeChoices: () => {
+      const window = BrowserWindow.getFocusedWindow()
+      const menu = buildSnoozeMenu(menuActions, accounts.snooze())
+      menu.popup(window ? { window } : {})
+    }
+  }
+  let menuSnooze: Snooze | null = accounts.snooze()
+  setAppMenu(menuActions, menuSnooze)
+  accounts.subscribe((state) => {
+    const same =
+      state.snooze === null || menuSnooze === null
+        ? state.snooze === menuSnooze
+        : state.snooze.until === menuSnooze.until
+    if (same) return
+    menuSnooze = state.snooze
+    setAppMenu(menuActions, menuSnooze)
+  })
+
+  // Notifications: new mail from the feed, and the web notifications of the Google pages.
+  const notifier = new Notifier({
+    account: (accountId) => accounts.account(accountId),
+    snooze: () => accounts.snooze()
+  })
+  accounts.onNewMail((accountId, entries) => {
+    const account = accounts.account(accountId)
+    if (!account) return
+    const title = account.nickname || account.email || 'New account'
+    for (const notification of newMailNotifications(title, entries)) {
+      notifier.notify({
+        accountId,
+        kind: 'new-mail',
+        title: notification.title,
+        body: notification.body,
+        icon: iconFromDataUrl(accounts.account(accountId)?.photo),
+        onClick: () => {
+          ensureMainWindow()
+          // A click on a message opens it. A click on a summary opens the inbox.
+          const url = notification.entry ? gmailMessageUrl(notification.entry.link) : gmailUrl()
+          accounts.showInGoogleApp(accountId, 'gmail', url)
+        }
+      })
+    }
+  })
+  registerPageNotifications({
+    notifier,
+    source: (contents) => accounts.googlePageSource(contents),
+    showGoogleApp: (accountId, googleApp) => {
+      ensureMainWindow()
+      accounts.showInGoogleApp(accountId, googleApp)
+    },
+    accountPhoto: (accountId) => accounts.account(accountId)?.photo ?? null
+  })
 
   // A removal deletes a session from disk. Let it end before Shifted quits.
   app.on('will-quit', (event) => {
@@ -101,13 +178,7 @@ void app.whenReady().then(() => {
     void pending.then(() => app.quit())
   })
 
-  app.on('activate', () => {
-    if (
-      !BrowserWindow.getAllWindows().some((window) => accounts.isMainScreen(window.webContents))
-    ) {
-      createMainWindow(accounts, badge)
-    }
-  })
+  app.on('activate', ensureMainWindow)
 })
 
 app.on('window-all-closed', () => {

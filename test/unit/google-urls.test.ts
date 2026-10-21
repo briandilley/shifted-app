@@ -6,6 +6,7 @@ import {
   FEED_LABELS,
   feedUrl,
   gmailComposeUrl,
+  gmailMessageUrl,
   gmailUrl,
   googleRedirectTarget,
   isCalendarLink,
@@ -130,6 +131,29 @@ describe('google-urls', () => {
     ).toBeUndefined()
     expect(googleRedirectTarget('https://example.com/url?q=https://example.com')).toBeUndefined()
     expect(googleRedirectTarget('not a url')).toBeUndefined()
+  })
+
+  it('opens the link of a feed entry in Gmail, and the inbox for any other link', () => {
+    const link =
+      'https://mail.google.com/mail/u/0/?account_id=a%40example.com&message_id=18f&view=conv&extsrc=atom'
+    expect(gmailMessageUrl(link)).toBe(link)
+    // The feed can give an http: link. Shifted uses https:.
+    expect(gmailMessageUrl('http://mail.google.com/mail?message_id=18f&view=conv')).toBe(
+      'https://mail.google.com/mail?message_id=18f&view=conv'
+    )
+    expect(gmailMessageUrl('https://example.com/?message_id=18f')).toBe(
+      'https://mail.google.com/mail/u/0/'
+    )
+    expect(gmailMessageUrl('javascript:alert(1)')).toBe('https://mail.google.com/mail/u/0/')
+    expect(gmailMessageUrl('')).toBe('https://mail.google.com/mail/u/0/')
+  })
+
+  it('reads the link of a fake feed entry relative to the fake server', () => {
+    process.env['SHIFTED_TEST_SERVER'] = 'http://127.0.0.1:4555'
+    expect(gmailMessageUrl('/gmail/?message_id=7&view=conv&extsrc=atom')).toBe(
+      'http://127.0.0.1:4555/gmail/?message_id=7&view=conv&extsrc=atom'
+    )
+    expect(gmailMessageUrl('/calendar/')).toBe('http://127.0.0.1:4555/gmail/')
   })
 
   it('accepts a test server URL with a trailing slash', () => {

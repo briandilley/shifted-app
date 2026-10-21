@@ -7,7 +7,21 @@
  * `electronApp.evaluate`.
  */
 import type { Notification } from 'electron'
+import type { NotificationKind } from '../shared/api'
 import { isTestMode } from './google-urls'
+
+/**
+ * A notification that Shifted would show. In test mode, Shifted does not show the
+ * notifications of new mail, Calendar, and Chat. It records them here.
+ */
+export interface RecordedNotification {
+  accountId: string
+  kind: NotificationKind
+  title: string
+  body: string
+  /** Do what a click on the notification does. */
+  click(): void
+}
 
 export interface ShiftedTestRecords {
   /** The URLs that Shifted would open in the default browser. */
@@ -18,6 +32,8 @@ export interface ShiftedTestRecords {
   downloadNotifications: Notification[]
   /** The total that the app badge shows now. */
   appBadgeTotal: number
+  /** The notifications of new mail, Calendar, and Chat that passed the rules, in order. */
+  notifications: RecordedNotification[]
 }
 
 interface TestRecordsHolder {
@@ -32,7 +48,8 @@ export function testRecords(): ShiftedTestRecords | undefined {
     openExternal: [],
     showItemInFolder: [],
     downloadNotifications: [],
-    appBadgeTotal: 0
+    appBadgeTotal: 0,
+    notifications: []
   }
   return holder.shiftedTestRecords
 }

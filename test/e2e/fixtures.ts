@@ -165,7 +165,10 @@ export interface ConfigFile {
     pagePermissions: Record<string, string>
     unreadCountSource?: string
     automaticFeed?: string | null
+    notifications?: Record<string, boolean>
+    quietHours?: { enabled: boolean; start: string; end: string; days: number[] }
   }[]
+  snooze?: { until: number | null } | null
 }
 
 export function readConfig(userDataDir: string): ConfigFile {
@@ -365,6 +368,55 @@ export function testRecords(app: ElectronApplication): Promise<TestRecords> {
       downloadNotifications: records?.downloadNotifications.length ?? 0
     }
   })
+}
+
+/** A notification that Shifted recorded in test mode (see `src/main/notifications.ts`). */
+export interface RecordedNotification {
+  accountId: string
+  kind: 'new-mail' | 'calendar' | 'chat'
+  title: string
+  body: string
+}
+
+interface NotificationRecordsHolder {
+  shiftedTestRecords?: { notifications: (RecordedNotification & { click(): void })[] }
+}
+
+/** The notifications of new mail, Calendar, and Chat that Shifted recorded, in order. */
+export function recordedNotifications(app: ElectronApplication): Promise<RecordedNotification[]> {
+  return app.evaluate(() =>
+    ((globalThis as NotificationRecordsHolder).shiftedTestRecords?.notifications ?? []).map(
+      ({ accountId, kind, title, body }) => ({ accountId, kind, title, body })
+    )
+  )
+}
+
+/** Do what a click on the recorded notification with this index does. */
+export async function clickRecordedNotification(
+  app: ElectronApplication,
+  index: number
+): Promise<void> {
+  await app.evaluate((_electron, wanted) => {
+    const notification = (globalThis as NotificationRecordsHolder).shiftedTestRecords
+      ?.notifications[wanted]
+    if (!notification) throw new Error(`No recorded notification ${wanted}.`)
+    notification.click()
+  }, index)
+}
+
+/** Click an item of the application menu by its id, also inside a submenu. */
+export async function clickAppMenuItem(app: ElectronApplication, id: string): Promise<void> {
+  await app.evaluate((_electron, wanted) => {
+    const item = _electron.Menu.getApplicationMenu()?.getMenuItemById(wanted)
+    if (!item) throw new Error(`The app menu has no item "${wanted}".`)
+    if (!item.enabled) throw new Error(`The item "${wanted}" is not enabled.`)
+    ;(item.click as () => void)()
+  }, id)
+}
+
+/** The id of the account with this address in `config.json`. */
+export function accountIdOf(userDataDir: string, email: string): string {
+  return readConfig(userDataDir).accounts.find((account) => account.email === email)?.id ?? ''
 }
 
 export { expect } from '@playwright/test'

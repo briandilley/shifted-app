@@ -22,8 +22,8 @@ export function accountMenuTemplate(
   return [
     { label: 'Rename', click: () => actions.openSettings({ page, focus: 'nickname' }) },
     { label: 'Color', click: () => actions.openSettings({ page, focus: 'color' }) },
-    // Prompt 05 adds the notification fields to the account page.
-    { label: 'Notifications', click: () => actions.openSettings({ page }) },
+    // The account page, with the focus on the notification switches.
+    { label: 'Notifications', click: () => actions.openSettings({ page, focus: 'notifications' }) },
     { type: 'separator' },
     {
       label: 'Sign out',

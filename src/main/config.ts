@@ -8,17 +8,32 @@ import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from
 import { join } from 'node:path'
 import {
   ACCOUNT_COLORS,
+  defaultNotificationSwitches,
+  defaultQuietHours,
   isAskedPermission,
   isGoogleApp,
   isSameColor,
   isUnreadCountSource,
+  NOTIFICATION_KINDS,
+  parseQuietHours,
   type GeneralConfig,
   type GoogleApp,
+  type NotificationSwitches,
   type PagePermissions,
+  type QuietHours,
+  type Snooze,
   type UnreadCountSource
 } from '../shared/api'
 
-export { ACCOUNT_COLORS, type GeneralConfig, type GoogleApp, type PagePermissions }
+export {
+  ACCOUNT_COLORS,
+  type GeneralConfig,
+  type GoogleApp,
+  type NotificationSwitches,
+  type PagePermissions,
+  type QuietHours,
+  type Snooze
+}
 
 /** The feeds that "Automatic" can choose: the one that matches the number next to Inbox. */
 export type AutomaticFeed = 'whole-inbox' | 'primary'
@@ -55,6 +70,10 @@ export interface AccountConfig {
    * Missing in a file from phase 03, which means `null`.
    */
   automaticFeed: AutomaticFeed | null
+  /** The notification switches. Missing in a file from phase 04, which means all on. */
+  notifications: NotificationSwitches
+  /** The quiet hours. Missing in a file from phase 04, which means off. */
+  quietHours: QuietHours
 }
 
 export interface Config {
@@ -62,6 +81,8 @@ export interface Config {
   /** The values of the General page. Missing in a file from phase 02. */
   general: GeneralConfig
   accounts: AccountConfig[]
+  /** The snooze, or `null` when it does not run. Missing in a file from phase 04. */
+  snooze: Snooze | null
 }
 
 /** The General values of a new configuration. */
@@ -72,7 +93,7 @@ export function defaultGeneralConfig(): GeneralConfig {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function emptyConfig(): Config {
-  return { version: CONFIG_VERSION, general: defaultGeneralConfig(), accounts: [] }
+  return { version: CONFIG_VERSION, general: defaultGeneralConfig(), accounts: [], snooze: null }
 }
 
 /** True when the value is a UUID, so that it is safe in a partition name. */
@@ -110,6 +131,32 @@ function parseGeneralConfig(value: unknown): GeneralConfig | undefined {
   return general
 }
 
+/**
+ * Read the notification switches. A missing value has all switches on. A missing switch
+ * is on.
+ */
+function parseNotificationSwitches(value: unknown): NotificationSwitches | undefined {
+  const switches = defaultNotificationSwitches()
+  if (value === undefined) return switches
+  if (!isRecord(value)) return undefined
+  for (const [kind, on] of Object.entries(value)) {
+    if (!(NOTIFICATION_KINDS as readonly string[]).includes(kind)) return undefined
+    if (typeof on !== 'boolean') return undefined
+    switches[kind as keyof NotificationSwitches] = on
+  }
+  return switches
+}
+
+/** Read the snooze. A missing value means no snooze. */
+function parseSnooze(value: unknown): Snooze | null | undefined {
+  if (value === undefined || value === null) return null
+  if (!isRecord(value)) return undefined
+  const { until } = value
+  if (until === null) return { until: null }
+  if (typeof until !== 'number' || !Number.isFinite(until)) return undefined
+  return { until }
+}
+
 function parseAccount(value: unknown): AccountConfig | undefined {
   if (!isRecord(value)) return undefined
   const { id, email, nickname, color, order, lastGoogleApp } = value
@@ -124,6 +171,11 @@ function parseAccount(value: unknown): AccountConfig | undefined {
   if (!isUnreadCountSource(unreadCountSource)) return undefined
   const automaticFeed = value['automaticFeed'] ?? null
   if (automaticFeed !== null && !isAutomaticFeed(automaticFeed)) return undefined
+  const notifications = parseNotificationSwitches(value['notifications'])
+  if (!notifications) return undefined
+  const quietHours =
+    value['quietHours'] === undefined ? defaultQuietHours() : parseQuietHours(value['quietHours'])
+  if (!quietHours) return undefined
   return {
     id,
     email,
@@ -133,7 +185,9 @@ function parseAccount(value: unknown): AccountConfig | undefined {
     lastGoogleApp,
     pagePermissions,
     unreadCountSource,
-    automaticFeed
+    automaticFeed,
+    notifications,
+    quietHours
   }
 }
 
@@ -158,7 +212,9 @@ export function parseConfig(value: unknown): Config | undefined {
     parsed.push(account)
   }
   parsed.sort((a, b) => a.order - b.order)
-  return { version: CONFIG_VERSION, general, accounts: parsed }
+  const snooze = parseSnooze(value['snooze'])
+  if (snooze === undefined) return undefined
+  return { version: CONFIG_VERSION, general, accounts: parsed, snooze }
 }
 
 /**
@@ -189,7 +245,9 @@ export function newAccount(existing: readonly AccountConfig[]): AccountConfig {
     lastGoogleApp: 'gmail',
     pagePermissions: {},
     unreadCountSource: 'automatic',
-    automaticFeed: null
+    automaticFeed: null,
+    notifications: defaultNotificationSwitches(),
+    quietHours: defaultQuietHours()
   }
 }
 

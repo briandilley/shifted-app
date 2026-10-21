@@ -48,6 +48,16 @@ export class AccountViews {
     return this.views.get(accountId)?.get(googleApp)
   }
 
+  /** The account and the Google app of a view, by its web contents, or `undefined`. */
+  find(contents: WebContents): ShownGoogleApp | undefined {
+    for (const [accountId, accountViews] of this.views) {
+      for (const [googleApp, view] of accountViews) {
+        if (view.webContents === contents) return { accountId, googleApp }
+      }
+    }
+    return undefined
+  }
+
   /**
    * Make the view of a Google app of an account, if it does not exist yet.
    *
@@ -122,7 +132,7 @@ export class AccountViews {
 
   private create(accountId: string, googleApp: GoogleApp, url: string): WebContentsView {
     const view = new WebContentsView({
-      webPreferences: googlePageWebPreferences(accountSession(accountId))
+      webPreferences: googlePageWebPreferences(accountSession(accountId), true)
     })
     const page = view.webContents
 

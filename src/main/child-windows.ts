@@ -22,7 +22,7 @@ export class ChildWindows {
       title: childWindowTitle(accountName),
       autoHideMenuBar: true,
       ...(process.platform !== 'darwin' ? { icon } : {}),
-      webPreferences: googlePageWebPreferences(accountSession(accountId))
+      webPreferences: googlePageWebPreferences(accountSession(accountId), true)
     }
   }
 
@@ -47,6 +47,16 @@ export class ChildWindows {
         this.windows.delete(accountId)
       }
     })
+  }
+
+  /** The account of a child window, by its web contents, or `undefined`. */
+  accountOf(contents: WebContents): string | undefined {
+    for (const [accountId, accountWindows] of this.windows) {
+      for (const window of accountWindows) {
+        if (!window.isDestroyed() && window.webContents === contents) return accountId
+      }
+    }
+    return undefined
   }
 
   /** Give the child windows of the account a new title, for example after a rename. */

@@ -206,6 +206,50 @@ describe('the fake Google test server', () => {
     expect(bad.status).toBe(400)
   })
 
+  it('adds a new entry to the feeds of one address with the control route', async () => {
+    const cookie = await signIn(fakeGoogle, 'entry@example.com')
+    const other = await signIn(fakeGoogle, 'other-entry@example.com')
+    const feedOf = async (session: string, label: string): Promise<string> =>
+      (await fetch(`${fakeGoogle.url}/feed/atom/${label}`, { headers: { cookie: session } })).text()
+    await fakeGoogle.setFeed({ address: 'entry@example.com', feed: 'primary', count: 1 })
+    await fakeGoogle.setFeed({ address: 'entry@example.com', feed: 'whole-inbox', count: 40 })
+    await fakeGoogle.addFeedEntry({
+      address: 'entry@example.com',
+      entry: {
+        id: '555',
+        title: 'Fresh',
+        authorName: 'Kim',
+        authorEmail: 'kim@example.com',
+        issued: '2026-10-21T10:00:00Z'
+      }
+    })
+    const primary = await feedOf(cookie, '%5Esq_ig_i_personal')
+    expect(primary).toContain('<fullcount>2</fullcount>')
+    expect(primary).toContain('<id>tag:gmail.google.com,2004:555</id>')
+    expect(primary).toContain('href="/gmail/?message_id=555&amp;view=conv&amp;extsrc=atom"')
+    // The whole inbox also gets the message. Other addresses and Important do not.
+    expect(await feedOf(cookie, '')).toContain('<fullcount>41</fullcount>')
+    expect(await feedOf(cookie, '%5Eiim')).not.toContain('555')
+    expect(await feedOf(other, '%5Esq_ig_i_personal')).not.toContain('555')
+
+    const bad = await fetch(`${fakeGoogle.url}/control/feed-entry`, {
+      method: 'POST',
+      body: JSON.stringify({ entry: { id: 1 } })
+    })
+    expect(bad.status).toBe(400)
+  })
+
+  it('the fake Calendar and Gmail pages have buttons that make web notifications', async () => {
+    const cookie = await signIn(fakeGoogle, 'notify@example.com')
+    const calendar = await (
+      await fetch(`${fakeGoogle.url}/calendar/`, { headers: { cookie } })
+    ).text()
+    expect(calendar).toContain('id="notify"')
+    expect(calendar).toContain('new Notification("Meeting in 10 minutes"')
+    const gmail = await (await fetch(`${fakeGoogle.url}/gmail/`, { headers: { cookie } })).text()
+    expect(gmail).toContain('id="chat-notify"')
+  })
+
   it('makes every feed fail with HTTP 500 until the failure is turned off', async () => {
     const cookie = await signIn(fakeGoogle, 'failure@example.com')
     await fakeGoogle.setFeedFailure(true)

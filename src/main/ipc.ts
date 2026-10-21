@@ -1,12 +1,15 @@
 /**
  * The IPC handlers for the screens of Shifted. Only the screens of Shifted can call
- * them. Google's pages have no preload script, so they cannot call them.
+ * them: each handler checks the sender. The preload script of Google's pages sends only
+ * on the channels of `page-notifications.ts`.
  */
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import {
   IpcChannel,
   isGoogleApp,
+  isNotificationKind,
   isUnreadCountSource,
+  parseQuietHours,
   type SettingsRequest,
   type ViewBounds
 } from '../shared/api'
@@ -140,6 +143,27 @@ export function registerIpc(
     if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
     if (!isUnreadCountSource(source)) return
     accounts.setUnreadCountSource(accountId, source)
+  })
+
+  ipcMain.on(
+    IpcChannel.setNotificationSwitch,
+    (event, accountId: unknown, kind: unknown, on: unknown) => {
+      if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
+      if (!isNotificationKind(kind) || typeof on !== 'boolean') return
+      accounts.setNotificationSwitch(accountId, kind, on)
+    }
+  )
+
+  ipcMain.on(IpcChannel.setQuietHours, (event, accountId: unknown, value: unknown) => {
+    if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
+    const quietHours = parseQuietHours(value)
+    if (!quietHours) return
+    accounts.setQuietHours(accountId, quietHours)
+  })
+
+  ipcMain.on(IpcChannel.stopSnooze, (event) => {
+    if (!isShiftedScreen(event.sender)) return
+    accounts.stopSnooze()
   })
 
   ipcMain.handle(IpcChannel.getScreenSources, (event) => {

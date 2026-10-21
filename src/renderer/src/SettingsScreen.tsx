@@ -5,16 +5,22 @@ import {
   ASKED_PERMISSIONS,
   accountSettingsPage,
   isSameColor,
+  isTimeOfDay,
   isUnreadCountSource,
   MAX_NICKNAME_LENGTH,
+  NOTIFICATION_KIND_NAMES,
+  NOTIFICATION_KINDS,
   parseSettingsRequest,
   settingsPageAccountId,
   UNREAD_COUNT_SOURCE_NAMES,
   UNREAD_COUNT_SOURCES,
+  WEEKDAYS,
   type AccountState,
   type GeneralConfig,
+  type QuietHours,
   type SettingsFocus,
-  type SettingsRequest
+  type SettingsRequest,
+  type Snooze
 } from '../../shared/api'
 import { accountName, accountTitle, colorName } from './account-display'
 import Avatar from './Avatar'
@@ -39,6 +45,7 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
   const [nickname, setNickname] = useState(account.nickname)
   const nicknameRef = useRef<HTMLInputElement>(null)
   const colorsRef = useRef<HTMLDivElement>(null)
+  const notificationsRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (focus === 'nickname') {
@@ -46,6 +53,9 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
       nicknameRef.current?.select()
     } else if (focus === 'color') {
       colorsRef.current?.querySelector<HTMLInputElement>('input:checked')?.focus()
+    } else if (focus === 'notifications') {
+      notificationsRef.current?.scrollIntoView({ block: 'start' })
+      notificationsRef.current?.querySelector<HTMLInputElement>('input')?.focus()
     }
   }, [focus, requestId])
 
@@ -103,6 +113,10 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
       </fieldset>
 
       <UnreadCountSourceField account={account} />
+
+      <NotificationSwitchesField account={account} sectionRef={notificationsRef} />
+
+      <QuietHoursField account={account} />
 
       <PagePermissionsField account={account} />
 
@@ -167,6 +181,185 @@ function UnreadCountSourceField({ account }: { account: AccountState }): React.J
   )
 }
 
+interface NotificationSwitchesFieldProps {
+  account: AccountState
+  sectionRef: React.RefObject<HTMLElement | null>
+}
+
+/**
+ * The three notification switches of an account: new mail, Calendar, and Chat. Only this
+ * page changes them, so the switches keep their own state and save each change at once.
+ */
+function NotificationSwitchesField({
+  account,
+  sectionRef
+}: NotificationSwitchesFieldProps): React.JSX.Element {
+  const [switches, setSwitches] = useState(account.notifications)
+  const headingId = `notifications-${account.id}`
+  return (
+    <section ref={sectionRef} className={styles.field} aria-labelledby={headingId}>
+      <h2 id={headingId} className={styles.label}>
+        Notifications
+      </h2>
+      {NOTIFICATION_KINDS.map((kind) => (
+        <label key={kind} className={styles.switch}>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={switches[kind]}
+            onChange={(event) => {
+              const on = event.target.checked
+              setSwitches((current) => ({ ...current, [kind]: on }))
+              window.shifted.setNotificationSwitch(account.id, kind, on)
+            }}
+          />
+          {NOTIFICATION_KIND_NAMES[kind]}
+        </label>
+      ))}
+    </section>
+  )
+}
+
+/**
+ * The quiet hours of an account: on or off, a daily range, and the days that are quiet
+ * all day.
+ */
+function QuietHoursField({ account }: { account: AccountState }): React.JSX.Element {
+  // Only this page changes the quiet hours, so the fields keep their own state, and each
+  // change saves the whole value at once.
+  const [quietHours, setQuietHours] = useState(account.quietHours)
+  // The time fields keep what you type. Shifted saves a time when it is complete.
+  const [start, setStart] = useState(quietHours.start)
+  const [end, setEnd] = useState(quietHours.end)
+
+  const save = (change: Partial<QuietHours>): void => {
+    const next = { ...quietHours, ...change }
+    setQuietHours(next)
+    window.shifted.setQuietHours(account.id, next)
+  }
+  const toggleDay = (day: number, on: boolean): void => {
+    const days = on ? [...quietHours.days, day] : quietHours.days.filter((d) => d !== day)
+    save({ days: days.sort((a, b) => a - b) })
+  }
+
+  const headingId = `quiet-hours-${account.id}`
+  const startId = `quiet-start-${account.id}`
+  const endId = `quiet-end-${account.id}`
+  return (
+    <section className={styles.field} aria-labelledby={headingId}>
+      <h2 id={headingId} className={styles.label}>
+        Quiet hours
+      </h2>
+      <label className={styles.switch}>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={quietHours.enabled}
+          onChange={(event) => save({ enabled: event.target.checked })}
+        />
+        Quiet hours
+      </label>
+      <fieldset className={styles.quietHours} disabled={!quietHours.enabled}>
+        <div className={styles.timeRange}>
+          <label htmlFor={startId}>Quiet every day from</label>
+          <input
+            id={startId}
+            className={styles.input}
+            type="time"
+            value={start}
+            required
+            onChange={(event) => {
+              setStart(event.target.value)
+              if (isTimeOfDay(event.target.value)) save({ start: event.target.value })
+            }}
+          />
+          <label htmlFor={endId}>to</label>
+          <input
+            id={endId}
+            className={styles.input}
+            type="time"
+            value={end}
+            required
+            onChange={(event) => {
+              setEnd(event.target.value)
+              if (isTimeOfDay(event.target.value)) save({ end: event.target.value })
+            }}
+          />
+        </div>
+        <div className={styles.weekdays} role="group" aria-label="Quiet all day on">
+          <span className={styles.weekdaysLabel}>Quiet all day on</span>
+          {WEEKDAYS.map(({ day, name, short }) => (
+            <label key={day} className={styles.weekday} title={name}>
+              <input
+                type="checkbox"
+                aria-label={name}
+                checked={quietHours.days.includes(day)}
+                onChange={(event) => toggleDay(day, event.target.checked)}
+              />
+              {short}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <p className={styles.note}>
+        While quiet hours are on, this account shows no notifications in the time range and on the
+        days that you choose. The range can cross midnight, for example 22:00 to 07:00. A
+        notification that quiet hours stop does not show later. The unread badge keeps updating.
+      </p>
+    </section>
+  )
+}
+
+/** The text of the snooze state, for example "Snoozed until 14:30". */
+function snoozeText(snooze: Snooze | null): string {
+  if (!snooze) return 'Notifications are on. Snooze is off.'
+  if (snooze.until === null) return 'Snoozed until you turn it off.'
+  const end = new Date(snooze.until)
+  const time = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const sameDay = end.toDateString() === new Date().toDateString()
+  const day = sameDay ? '' : `${end.toLocaleDateString([], { weekday: 'long' })} `
+  return `Snoozed until ${day}${time}.`
+}
+
+/** The Notifications page: the snooze state, and a note about Gmail's own notifications. */
+function NotificationsPage({ snooze }: { snooze: Snooze | null }): React.JSX.Element {
+  return (
+    <section className={styles.page} aria-labelledby="page-title">
+      <h1 id="page-title" className={styles.title}>
+        Notifications
+      </h1>
+      <div className={styles.field}>
+        <span className={styles.label}>Snooze</span>
+        <p className={styles.snoozeState} data-snooze-state>
+          {snoozeText(snooze)}
+        </p>
+        <div>
+          <button
+            type="button"
+            className={styles.button}
+            disabled={snooze === null}
+            onClick={() => window.shifted.stopSnooze()}
+          >
+            Stop snooze
+          </button>
+        </div>
+        <p className={styles.note}>
+          Snooze stops the notifications of all accounts. To snooze, press{' '}
+          {window.shifted.platform === 'darwin'
+            ? 'Cmd+Shift+S, or use Snooze in the Shifted menu.'
+            : 'Ctrl+Shift+S, or use Snooze in the File menu.'}
+        </p>
+      </div>
+      <div className={styles.field}>
+        <span className={styles.label}>Gmail&apos;s own notifications</span>
+        <p className={styles.note}>
+          Keep Gmail&apos;s own desktop notifications for new mail off. Shifted already shows them.
+        </p>
+      </div>
+    </section>
+  )
+}
+
 /** The saved answers to the page permissions of an account, and the reset button. */
 function PagePermissionsField({ account }: { account: AccountState }): React.JSX.Element {
   const saved = ASKED_PERMISSIONS.filter((permission) => account.pagePermissions[permission])
@@ -226,17 +419,6 @@ function GeneralPage({ general }: { general: GeneralConfig }): React.JSX.Element
           When this is off, Shifted saves each download in your Downloads folder.
         </p>
       </div>
-    </section>
-  )
-}
-
-/** A page that later prompts fill. */
-function EmptyPage({ title }: { title: string }): React.JSX.Element {
-  return (
-    <section className={styles.page} aria-labelledby="page-title">
-      <h1 id="page-title" className={styles.title}>
-        {title}
-      </h1>
     </section>
   )
 }
@@ -314,7 +496,7 @@ function SettingsScreen(): React.JSX.Element {
               requestId={request.id}
             />
           ) : page === 'notifications' ? (
-            <EmptyPage title="Notifications" />
+            <NotificationsPage snooze={state.snooze} />
           ) : (
             <GeneralPage general={state.general} />
           ))}

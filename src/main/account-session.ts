@@ -6,6 +6,7 @@
  */
 import { app, session, type Session, type WebPreferences } from 'electron'
 import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
 
 const configuredSessions = new WeakSet<Session>()
 
@@ -28,14 +29,30 @@ export function accountSession(accountId: string): Session {
 /**
  * The web preferences of a view that shows a Google page of an account. See the
  * "Security" section of `docs/spec/BUILD.md`.
+ *
+ * @param withPageNotifications True for the Gmail and Calendar views and the child
+ *   windows. They get the preload script `google-page.ts`, which sends the web
+ *   notifications of the page to Shifted. It runs in every frame of the page
+ *   (`nodeIntegrationInSubFrames`), so that a frame inside the page cannot skip the rules
+ *   of Shifted. With `sandbox: true`, a preload script has no Node.js in any frame. The
+ *   sign-in window does not get it.
  */
-export function googlePageWebPreferences(accountSession: Session): WebPreferences {
+export function googlePageWebPreferences(
+  accountSession: Session,
+  withPageNotifications = false
+): WebPreferences {
   return {
     session: accountSession,
     sandbox: true,
     contextIsolation: true,
     nodeIntegration: false,
-    webviewTag: false
+    webviewTag: false,
+    ...(withPageNotifications
+      ? {
+          preload: join(__dirname, '../preload/google-page.js'),
+          nodeIntegrationInSubFrames: true
+        }
+      : {})
   }
 }
 

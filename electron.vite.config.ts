@@ -22,7 +22,18 @@ function devContentSecurityPolicy(): Plugin {
 
 export default defineConfig({
   main: {},
-  preload: {},
+  preload: {
+    build: {
+      rolldownOptions: {
+        // Two preload scripts: one for the screens of Shifted, one for the Google pages.
+        // Each one runs in a sandbox, so each must be one file. They share no module.
+        input: {
+          index: resolve('src/preload/index.ts'),
+          'google-page': resolve('src/preload/google-page.ts')
+        }
+      }
+    }
+  },
   renderer: {
     resolve: {
       alias: {
