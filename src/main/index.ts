@@ -39,6 +39,7 @@ import {
   mainWindowBackdrop,
   mainWindowFrameOptions
 } from './window-frame'
+import { bringToFront } from './window-front'
 import { restoredBounds, WINDOW_STATE_FILE_NAME, WindowStateKeeper } from './window-state'
 
 /** The bundle identifier of Shifted. See "Name" in `docs/spec/PRODUCT.md`. */
@@ -270,11 +271,7 @@ function startShifted(): void {
       BrowserWindow.getAllWindows().find((candidate) =>
         accounts.isMainScreen(candidate.webContents)
       ) ?? null
-    if (window) {
-      if (window.isMinimized()) window.restore()
-      window.show()
-      window.focus()
-    }
+    if (window) bringToFront(window)
     return window
   }
 

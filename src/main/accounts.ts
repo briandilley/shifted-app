@@ -60,6 +60,7 @@ import { configureAccountSession, type SessionHandlerDeps } from './session-hand
 import { adjacentAccountId } from './shortcuts'
 import { SignInWindow } from './sign-in-window'
 import { testDurationMs } from './test-hooks'
+import { bringToFront } from './window-front'
 import { chooseAutomaticFeed, feedToRead } from './unread-counts'
 import { UnreadPoller, type ReadOutcome } from './unread-poller'
 
@@ -592,11 +593,7 @@ export class Accounts {
     this.updateViews()
     this.publish()
     const window = this.mainWindow
-    if (window && !window.isDestroyed()) {
-      if (window.isMinimized()) window.restore()
-      window.show()
-      window.focus()
-    }
+    if (window && !window.isDestroyed()) bringToFront(window)
   }
 
   /** Turn "Ask where to save each file" on or off. */

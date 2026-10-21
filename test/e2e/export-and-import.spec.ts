@@ -152,6 +152,12 @@ test('"Email it to myself" opens a new message to the selected account with the 
   await sidebarAccount(mainWindow, ONE).click()
   await openSettingsFromAppMenu(shifted)
   const settings = await settingsWindowPage(shifted)
+  const frontRequests = (): Promise<string[]> =>
+    shifted.evaluate(() => [
+      ...((globalThis as { shiftedTestRecords?: { windowsToFront: string[] } }).shiftedTestRecords
+        ?.windowsToFront ?? [])
+    ])
+  const before = (await frontRequests()).length
   await settings.getByRole('button', { name: 'Email it to myself' }).click()
 
   await expect.poll(() => composeUrlInContentArea(shifted)).toEqual(expect.any(String))
@@ -168,12 +174,23 @@ test('"Email it to myself" opens a new message to the selected account with the 
     ONE,
     TWO
   ])
-  // The main window comes to the front. Shifted sends nothing: the message waits for Send.
+  // Shifted asks to bring the main window to the front, and it shows. Whether the
+  // operating system puts Shifted in front of other apps depends on the app in front now,
+  // so the test checks the request, not `getFocusedWindow()`. Shifted sends nothing: the
+  // message waits for Send.
+  const requests = (await frontRequests()).slice(before)
+  expect(requests.length).toBeGreaterThan(0)
+  for (const url of requests) {
+    expect(url).toContain('/renderer/index.html')
+    expect(url).not.toContain('#')
+  }
   expect(
     await shifted.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getFocusedWindow()?.webContents.getURL()
+      BrowserWindow.getAllWindows()
+        .find((window) => !window.webContents.getURL().includes('#'))
+        ?.isVisible()
     )
-  ).not.toContain('#settings')
+  ).toBe(true)
 
   // Pasting the whole message into the import window of the same computer changes nothing.
   await settings.getByRole('button', { name: 'Import configuration…' }).click()

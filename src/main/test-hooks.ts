@@ -49,6 +49,12 @@ export interface ShiftedTestRecords {
    * under `xvfb-run`), closing the main window quits Shifted.
    */
   hasTray: boolean
+  /**
+   * The URL of the screen of each window that Shifted asked to bring to the front, in
+   * order (see `window-front.ts`). The operating system decides whether Shifted really
+   * comes in front of other apps, so the tests check the request.
+   */
+  windowsToFront: string[]
 }
 
 interface TestRecordsHolder {
@@ -67,7 +73,8 @@ export function testRecords(): ShiftedTestRecords | undefined {
     notifications: [],
     makeDefaultEmailApp: 0,
     openAtLogin: [],
-    hasTray: false
+    hasTray: false,
+    windowsToFront: []
   }
   return holder.shiftedTestRecords
 }
