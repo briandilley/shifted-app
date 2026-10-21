@@ -20,6 +20,16 @@ export function accountLabel(account: AccountState): string {
   return account.nickname ? `${account.nickname}, ${accountName(account)}` : accountName(account)
 }
 
+/**
+ * What the unread badge of an account says, for screen readers, or `null` when the badge
+ * shows nothing.
+ */
+export function unreadDescription(account: AccountState): string | null {
+  if (account.unreadWarning !== null) return `Unread count not available: ${account.unreadWarning}`
+  const count = account.unreadCount ?? 0
+  return count > 0 ? `${count} unread` : null
+}
+
 /** The letter that the avatar shows when Shifted has no photo. */
 export function accountLetter(account: AccountState): string {
   const name = account.email || account.nickname

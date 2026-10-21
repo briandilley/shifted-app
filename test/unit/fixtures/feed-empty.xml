@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed version="0.3" xmlns="http://purl.org/atom/ns#">
+<title>Gmail - Inbox for name@company.example</title>
+<tagline>New messages in your Gmail Inbox</tagline>
+<fullcount>0</fullcount>
+<link rel="alternate" href="https://mail.google.com/mail/u/0" type="text/html" />
+<modified>2026-10-21T09:30:00Z</modified>
+</feed>

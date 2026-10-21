@@ -1,6 +1,7 @@
 /**
  * The accounts of Shifted: the configuration, the session of each account, the Google app
- * views of each account in the main window, the sign-in windows, and the profile photos.
+ * views of each account in the main window, the sign-in windows, the profile photos, and
+ * the unread counts.
  */
 import { dialog, type BrowserWindow, type WebContents } from 'electron'
 import {
@@ -13,6 +14,7 @@ import {
   type GoogleApp,
   type PermissionAnswer,
   type ShiftedState,
+  type UnreadCountSource,
   type ViewBounds
 } from '../shared/api'
 import {
@@ -31,20 +33,31 @@ import {
   type ConfigStore
 } from './config'
 import { Downloads } from './downloads'
-import { parseFeedAddress } from './feed'
-import { findProfilePhotoUrl } from './gmail-page'
-import { feedUrl, isProfilePhotoUrl } from './google-urls'
+import { feedErrorText, readFeed, type FeedFetch, type FeedResult } from './feed'
+import { findProfilePhotoUrl, readInboxCount } from './gmail-page'
+import { FEED_LABELS, isProfilePhotoUrl } from './google-urls'
 import type { LinkHandlers } from './link-handlers'
 import type { ProfilePhotos } from './profile-photos'
 import type { ScreenPicker } from './screen-picker'
+import { sessionGet } from './session-fetch'
 import { configureAccountSession, type SessionHandlerDeps } from './session-handlers'
 import { SignInWindow } from './sign-in-window'
+import { chooseAutomaticFeed, feedToRead } from './unread-counts'
+import { UnreadPoller, type ReadOutcome } from './unread-poller'
 
 function ignore(): void {
   // A request that failed or a view that closed. Nothing to do.
 }
 
 export type StateListener = (state: ShiftedState) => void
+
+/** The result of the last reads of the feed of one account. */
+interface UnreadState {
+  /** The count of the last good read, or `null` before the first one. */
+  count: number | null
+  /** Why the last read failed, or `null` if it worked. */
+  warning: string | null
+}
 
 export class Accounts {
   private config: Config
@@ -55,6 +68,10 @@ export class Accounts {
   private readonly removals = new Map<string, Promise<void>>()
   private readonly signOuts = new Map<string, Promise<void>>()
   private readonly photoLookups = new Set<string>()
+  private readonly unread = new Map<string, UnreadState>()
+  /** The accounts whose automatic choice of feed runs now. */
+  private readonly feedChoices = new Set<string>()
+  private readonly poller = new UnreadPoller((accountId) => this.readUnreadCount(accountId))
   private readonly listeners = new Set<StateListener>()
   private selectedAccountId: string | null
   private mainWindow: BrowserWindow | null = null
@@ -63,7 +80,10 @@ export class Accounts {
   private readonly downloads = new Downloads(() => this.config.general.askWhereToSave)
   private readonly links: LinkHandlers = {
     showInGoogleApp: (accountId, googleApp, url) => this.showInGoogleApp(accountId, googleApp, url),
-    signedOut: (accountId) => this.setStatus(accountId, 'signed-out'),
+    signedOut: (accountId) => {
+      this.setStatus(accountId, 'signed-out')
+      this.poller.readNow(accountId)
+    },
     childWindowOptions: (accountId) =>
       this.childWindows.options(accountId, this.accountName(accountId)),
     childWindowCreated: (accountId, window, openedUrl) => {
@@ -102,6 +122,7 @@ export class Accounts {
       this.session(account.id)
     }
     this.selectedAccountId = this.config.accounts[0]?.id ?? null
+    this.syncPoller()
   }
 
   state(): ShiftedState {
@@ -170,6 +191,7 @@ export class Accounts {
     this.session(account.id)
     this.selectedAccountId = account.id
     this.openSignInWindow(account.id)
+    this.syncPoller()
   }
 
   /** Show this account in the content area, with the Google app that it used last. */
@@ -179,6 +201,8 @@ export class Accounts {
     this.selectedAccountId = accountId
     this.updateViews()
     this.publish()
+    // Read the feed each time you switch to an account.
+    this.poller.readNow(accountId)
   }
 
   /** Show this Google app of the selected account, and remember it for the account. */
@@ -199,7 +223,9 @@ export class Accounts {
     const views = this.views
     if (!account || !views || this.removals.has(accountId)) return
     if (this.status.get(accountId) !== 'signed-in') return
+    const switched = this.selectedAccountId !== accountId
     this.selectedAccountId = accountId
+    if (switched) this.poller.readNow(accountId)
     if (account.lastGoogleApp !== googleApp) {
       this.updateAccount(accountId, { lastGoogleApp: googleApp })
     }
@@ -220,6 +246,27 @@ export class Accounts {
     this.config = { ...this.config, general: { ...this.config.general, askWhereToSave: value } }
     this.store.save(this.config)
     this.publish()
+  }
+
+  /**
+   * Set "Unread count source" of the account, and read its feed again. Choosing
+   * "Automatic" forgets the feed that "Automatic" chose before, so that Shifted learns it
+   * again.
+   */
+  setUnreadCountSource(accountId: string, source: UnreadCountSource): void {
+    const account = this.findAccount(accountId)
+    if (!account || account.unreadCountSource === source) return
+    this.updateAccount(accountId, {
+      unreadCountSource: source,
+      automaticFeed: source === 'automatic' ? null : account.automaticFeed
+    })
+    this.poller.readNow(accountId)
+    if (source !== 'automatic') return
+    // Learn the feed now if Gmail of the account already shows. Otherwise on its next load.
+    const gmail = this.views?.get(accountId, 'gmail')?.webContents
+    if (gmail && !gmail.isDestroyed() && !gmail.isLoading()) {
+      this.chooseAutomaticFeed(accountId, gmail).catch(ignore)
+    }
   }
 
   /** Forget the saved answers to the page permissions of the account. */
@@ -356,6 +403,8 @@ export class Accounts {
     this.store.save(this.config)
     this.status.delete(accountId)
     this.signedInOnce.delete(accountId)
+    this.unread.delete(accountId)
+    this.syncPoller()
     if (this.selectedAccountId === accountId) {
       this.selectedAccountId = this.config.accounts[0]?.id ?? null
     }
@@ -370,6 +419,8 @@ export class Accounts {
     this.signedInOnce.add(accountId)
     this.setStatus(accountId, 'signed-out')
     await clearAccountSession(accountId)
+    // The badge shows "Signed out" at once.
+    this.poller.readNow(accountId)
   }
 
   private openSignInWindow(accountId: string): void {
@@ -405,6 +456,7 @@ export class Accounts {
     this.views?.ensure(accountId, 'gmail')
     this.updateViews()
     this.publish()
+    this.poller.readNow(accountId)
   }
 
   private signInWindowClosed(accountId: string, window: SignInWindow, finished: boolean): void {
@@ -420,22 +472,113 @@ export class Accounts {
     }
   }
 
-  /** Gmail of the account loaded: read its address and its profile photo. */
+  /**
+   * Gmail of the account loaded: read its address and its profile photo, and make the
+   * automatic choice of feed if it is not made yet.
+   */
   private gmailLoaded(accountId: string, gmail: WebContents): void {
     this.readAddress(accountId).catch(ignore)
     this.readPhoto(accountId, gmail).catch((error: unknown) => {
       console.error(`Shifted could not read the photo of account ${accountId}:`, error)
     })
+    this.chooseAutomaticFeed(accountId, gmail).catch((error: unknown) => {
+      console.error(`Shifted could not choose the feed of account ${accountId}:`, error)
+    })
   }
 
   /** Read the email address of the account from the title of its Atom feed. */
   private async readAddress(accountId: string): Promise<void> {
-    const response = await this.session(accountId).fetch(feedUrl(), { credentials: 'include' })
-    if (!response.ok) return
-    const address = parseFeedAddress(await response.text())
+    const result = await readFeed(this.feedFetch(accountId), FEED_LABELS['whole-inbox'])
+    if (result.ok) this.saveAddress(accountId, result.feed.address)
+  }
+
+  /** Save the address that the feed title gave, if it changed. */
+  private saveAddress(accountId: string, address: string | undefined): void {
     const account = this.findAccount(accountId)
     if (!address || !account || account.email === address) return
     this.updateAccount(accountId, { email: address })
+  }
+
+  /** Read a feed with the session of the account. */
+  private feedFetch(accountId: string): FeedFetch {
+    const session = this.session(accountId)
+    return (url) => sessionGet(session, url)
+  }
+
+  /**
+   * The automatic choice of feed. Read the number next to Inbox from the title of the
+   * Gmail page, then read the "Whole inbox" and the "Primary" feeds. If exactly one of them
+   * has that count, save it for the account. Otherwise try again on the next load of Gmail.
+   */
+  private async chooseAutomaticFeed(accountId: string, gmail: WebContents): Promise<void> {
+    const needsChoice = (): boolean => {
+      const account = this.findAccount(accountId)
+      return (
+        account !== undefined &&
+        !this.removals.has(accountId) &&
+        account.unreadCountSource === 'automatic' &&
+        account.automaticFeed === null
+      )
+    }
+    if (!needsChoice() || this.feedChoices.has(accountId)) return
+    this.feedChoices.add(accountId)
+    try {
+      const gmailCount = await readInboxCount(gmail)
+      if (gmailCount === undefined || !needsChoice()) return
+      const fetch = this.feedFetch(accountId)
+      const [wholeInbox, primary] = await Promise.all([
+        readFeed(fetch, FEED_LABELS['whole-inbox']),
+        readFeed(fetch, FEED_LABELS.primary)
+      ])
+      if (!wholeInbox.ok || !primary.ok || !needsChoice()) return
+      const choice = chooseAutomaticFeed(
+        gmailCount,
+        wholeInbox.feed.fullcount,
+        primary.feed.fullcount
+      )
+      if (!choice) return
+      this.updateAccount(accountId, { automaticFeed: choice })
+      this.poller.readNow(accountId)
+    } finally {
+      this.feedChoices.delete(accountId)
+    }
+  }
+
+  /**
+   * Read the feed of the account for its unread count. The poller calls it about every
+   * 60 seconds, and Shifted calls it when you switch to the account.
+   */
+  private async readUnreadCount(accountId: string): Promise<ReadOutcome> {
+    const canRead = (): boolean =>
+      this.findAccount(accountId) !== undefined &&
+      !this.removals.has(accountId) &&
+      this.status.get(accountId) !== 'signing-in'
+    const account = this.findAccount(accountId)
+    if (!account || !canRead()) return 'skipped'
+    const feed = feedToRead(account.unreadCountSource, account.automaticFeed)
+    const result = await readFeed(this.feedFetch(accountId), FEED_LABELS[feed])
+    const now = this.findAccount(accountId)
+    // The account changed during the read. A new read follows.
+    if (!now || !canRead() || feedToRead(now.unreadCountSource, now.automaticFeed) !== feed) {
+      return 'skipped'
+    }
+    this.saveUnreadResult(accountId, result)
+    return result.ok ? 'ok' : 'error'
+  }
+
+  private saveUnreadResult(accountId: string, result: FeedResult): void {
+    const previous = this.unread.get(accountId) ?? { count: null, warning: null }
+    const next: UnreadState = result.ok
+      ? { count: result.feed.fullcount, warning: null }
+      : { count: previous.count, warning: feedErrorText(result.error) }
+    this.unread.set(accountId, next)
+    if (result.ok && result.feed.address) this.saveAddress(accountId, result.feed.address)
+    if (previous.count !== next.count || previous.warning !== next.warning) this.publish()
+  }
+
+  /** Poll the feeds of exactly the accounts in the configuration. */
+  private syncPoller(): void {
+    this.poller.sync(this.config.accounts.map((account) => account.id))
   }
 
   /**
@@ -535,7 +678,12 @@ export class Accounts {
       status: this.status.get(account.id) ?? 'signed-in',
       lastGoogleApp: account.lastGoogleApp,
       photo: this.photos.dataUrl(account.id),
-      pagePermissions: { ...account.pagePermissions }
+      pagePermissions: { ...account.pagePermissions },
+      unreadCount: this.unread.get(account.id)?.count ?? null,
+      unreadWarning: this.unread.get(account.id)?.warning ?? null,
+      unreadCountSource: account.unreadCountSource,
+      unreadFeed: feedToRead(account.unreadCountSource, account.automaticFeed),
+      automaticFeedLearned: account.automaticFeed !== null
     }
   }
 

@@ -5,9 +5,12 @@ import {
   ASKED_PERMISSIONS,
   accountSettingsPage,
   isSameColor,
+  isUnreadCountSource,
   MAX_NICKNAME_LENGTH,
   parseSettingsRequest,
   settingsPageAccountId,
+  UNREAD_COUNT_SOURCE_NAMES,
+  UNREAD_COUNT_SOURCES,
   type AccountState,
   type GeneralConfig,
   type SettingsFocus,
@@ -99,6 +102,8 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
         </div>
       </fieldset>
 
+      <UnreadCountSourceField account={account} />
+
       <PagePermissionsField account={account} />
 
       <div className={styles.actions}>
@@ -119,6 +124,46 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
         </button>
       </div>
     </section>
+  )
+}
+
+/** What "Automatic" does now, below the "Unread count source" field. */
+function automaticNote(account: AccountState): string {
+  const feed = UNREAD_COUNT_SOURCE_NAMES[account.unreadFeed]
+  return account.automaticFeedLearned
+    ? `Shifted found that Gmail counts ${feed === 'Primary' ? 'the Primary tab' : 'the whole inbox'}, and reads that count.`
+    : 'Shifted compares the number next to Inbox in Gmail with its feeds the next time Gmail loads. Until then, it counts the Primary tab.'
+}
+
+/** "Unread count source": where the unread count of the account comes from. */
+function UnreadCountSourceField({ account }: { account: AccountState }): React.JSX.Element {
+  const id = `unread-source-${account.id}`
+  return (
+    <div className={styles.field}>
+      <label htmlFor={id} className={styles.label}>
+        Unread count source
+      </label>
+      <select
+        id={id}
+        className={styles.input}
+        value={account.unreadCountSource}
+        onChange={(event) => {
+          const source = event.target.value
+          if (isUnreadCountSource(source)) window.shifted.setUnreadCountSource(account.id, source)
+        }}
+      >
+        {UNREAD_COUNT_SOURCES.map((source) => (
+          <option key={source} value={source}>
+            {UNREAD_COUNT_SOURCE_NAMES[source]}
+          </option>
+        ))}
+      </select>
+      <p className={styles.note}>
+        {account.unreadCountSource === 'automatic'
+          ? automaticNote(account)
+          : 'The badge counts the unread messages of this feed. Choose Automatic to match the number next to Inbox in Gmail.'}
+      </p>
+    </div>
   )
 }
 

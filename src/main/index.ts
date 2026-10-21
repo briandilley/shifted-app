@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { Accounts } from './accounts'
+import { AppBadge } from './app-badge'
 import { setAppMenu } from './app-menu'
 import { ConfigStore } from './config'
 import { registerIpc } from './ipc'
@@ -14,6 +15,7 @@ import {
   lockShiftedScreen,
   shiftedScreenWebPreferences
 } from './shifted-screens'
+import { appBadgeTotal } from './unread-counts'
 import { applyUserAgent } from './user-agent'
 
 const APP_ID = 'io.github.briandilley.shifted'
@@ -27,7 +29,7 @@ if (userDataDir) {
 // The user agent must be set before any window opens.
 applyUserAgent(app)
 
-function createMainWindow(accounts: Accounts): BrowserWindow {
+function createMainWindow(accounts: Accounts, badge: AppBadge): BrowserWindow {
   const mainWindow = new BrowserWindow({
     title: 'Shifted',
     width: 1200,
@@ -46,6 +48,7 @@ function createMainWindow(accounts: Accounts): BrowserWindow {
   lockShiftedScreen(mainWindow.webContents)
   loadShiftedScreen(mainWindow.webContents)
   accounts.attachMainWindow(mainWindow)
+  badge.attachWindow(mainWindow)
 
   return mainWindow
 }
@@ -85,7 +88,10 @@ void app.whenReady().then(() => {
   const settings = new SettingsWindow(accounts)
   registerIpc(accounts, settings, screenPicker)
   setAppMenu({ openSettings: () => settings.open() })
-  createMainWindow(accounts)
+  // The app badge shows the sum of the unread counts of all accounts.
+  const badge = new AppBadge()
+  accounts.subscribe((state) => badge.update(appBadgeTotal(state.accounts)))
+  createMainWindow(accounts, badge)
 
   // A removal deletes a session from disk. Let it end before Shifted quits.
   app.on('will-quit', (event) => {
@@ -99,7 +105,7 @@ void app.whenReady().then(() => {
     if (
       !BrowserWindow.getAllWindows().some((window) => accounts.isMainScreen(window.webContents))
     ) {
-      createMainWindow(accounts)
+      createMainWindow(accounts, badge)
     }
   })
 })

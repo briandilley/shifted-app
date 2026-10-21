@@ -163,6 +163,8 @@ export interface ConfigFile {
     order: number
     lastGoogleApp: string
     pagePermissions: Record<string, string>
+    unreadCountSource?: string
+    automaticFeed?: string | null
   }[]
 }
 
@@ -322,6 +324,20 @@ export function gmailViewPage(
   fakeGoogle: FakeGoogleServer
 ): Promise<Page> {
   return findPage(app, (url) => url === `${fakeGoogle.url}/gmail/`)
+}
+
+/** The unread badge on the avatar of an account in the sidebar. */
+export function unreadBadge(mainWindow: Page, name: string): Locator {
+  return sidebarAccount(mainWindow, name).locator('[data-unread-badge]')
+}
+
+/** The total that the app badge shows now (see `src/main/app-badge.ts`). */
+export function appBadgeTotal(app: ElectronApplication): Promise<number> {
+  return app.evaluate(
+    () =>
+      (globalThis as { shiftedTestRecords?: { appBadgeTotal: number } }).shiftedTestRecords
+        ?.appBadgeTotal ?? 0
+  )
 }
 
 /** What Shifted recorded in test mode in place of the default browser and the file manager. */

@@ -16,6 +16,15 @@
  * The fake Gmail page shows the profile photo `/avatar.png` where `src/main/gmail-page.ts`
  * looks for it. The photo is a square in a color that depends on the address.
  *
+ * The fake Atom feed: `/feed/atom/` (whole inbox), `/feed/atom/%5Esq_ig_i_personal`
+ * (Primary), and `/feed/atom/%5Eiim` (Important). A test sets the count and the entries
+ * of each feed, for each address or for every address, with the control route
+ * `POST /control/feed` (or `server.setFeed`). The title of the fake Gmail page follows
+ * the Primary count of its address, for example `Inbox (3) - test@example.com - Gmail`,
+ * or `Inbox - test@example.com - Gmail` for 0. The control route
+ * `POST /control/feed-failure` (or `server.setFeedFailure`) makes every feed answer
+ * HTTP 500 until a test turns it off again.
+ *
  * The fake Gmail page also has the links that the link rules handle: a pop-out that opens
  * `about:blank` and writes a fake compose form into it, a link to a fake Calendar event,
  * links to an outside page, a `mailto:` link, a button that asks for the microphone, and
@@ -26,6 +35,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { crc32, deflateSync } from 'node:zlib'
+import { FEED_LABELS } from '../../src/main/google-urls'
 
 export const FAKE_ADDRESS = 'test@example.com'
 export const SESSION_COOKIE = 'FAKE_SID'
@@ -56,11 +66,53 @@ export interface FakeSession {
   address: string
 }
 
+/** The feeds of the fake server: the names of `FEED_LABELS` in `src/main/google-urls.ts`. */
+export type FakeFeedName = keyof typeof FEED_LABELS
+
+export const FAKE_FEED_NAMES = Object.keys(FEED_LABELS) as FakeFeedName[]
+
+/** One message in a fake feed. */
+export interface FakeFeedEntry {
+  id: string
+  title: string
+  authorName: string
+  authorEmail: string
+  /** ISO 8601 time. */
+  issued: string
+}
+
+/** What one fake feed of one address says. */
+export interface FakeFeed {
+  count: number
+  entries: FakeFeedEntry[]
+}
+
+/** The value that sets one fake feed (see `POST /control/feed`). */
+export interface FakeFeedSetting {
+  /** The address of the account. Without it, the feed of every address that has no own value. */
+  address?: string
+  feed: FakeFeedName
+  count: number
+  entries?: FakeFeedEntry[]
+}
+
+/**
+ * How the fake feeds fail: HTTP 500, or a redirect to the fake sign-in page, as Google
+ * can do for a session that is signed out.
+ */
+export type FakeFeedFailure = 'http-500' | 'sign-in-redirect'
+
+/** The address key of the feeds that every address uses when it has no own value. */
+const EVERY_ADDRESS = '*'
+
 /** The state of the fake server. Later prompts add fields here. */
 export interface FakeGoogleState {
   /** The address that the email field of the fake sign-in page shows first. */
   address: string
-  unreadCount: number
+  /** The fake feeds, by `<address or *> <feed name>`. A missing feed has count 0 and no entries. */
+  feeds: Map<string, FakeFeed>
+  /** How every feed fails now, or `null` while the feeds work. */
+  feedFailure: FakeFeedFailure | null
   /** The sessions that are signed in, by session ID. A `FAKE_SID` cookie with another value is not. */
   sessions: Map<string, FakeSession>
 }
@@ -71,6 +123,13 @@ export interface FakeGoogleServer {
   state: FakeGoogleState
   /** Call the control route that ends every fake session. */
   signOut(): Promise<void>
+  /** Call the control route that sets the count and the entries of a fake feed. */
+  setFeed(setting: FakeFeedSetting): Promise<void>
+  /**
+   * Call the control route that makes every feed fail: `true` or `'http-500'` answers
+   * HTTP 500, `'sign-in-redirect'` goes to the sign-in page, and `false` makes it work again.
+   */
+  setFeedFailure(fail: boolean | FakeFeedFailure): Promise<void>
   addRoute(route: Route): void
   close(): Promise<void>
 }
@@ -190,20 +249,95 @@ function clearCookieHeaders({ cookies }: RouteContext): Record<string, string> {
   return { 'Set-Cookie': `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax` }
 }
 
-function gmailTitle(state: FakeGoogleState, address: string): string {
-  return `Inbox (${state.unreadCount}) - ${address} - Gmail`
+/** The fake feed of an address: its own value, else the value for every address, else empty. */
+export function fakeFeed(state: FakeGoogleState, address: string, feed: FakeFeedName): FakeFeed {
+  return (
+    state.feeds.get(`${address} ${feed}`) ??
+    state.feeds.get(`${EVERY_ADDRESS} ${feed}`) ?? { count: 0, entries: [] }
+  )
 }
 
-function atomFeed(state: FakeGoogleState, address: string): string {
+/** Like Gmail, the title shows the Primary count next to Inbox, and no number for 0. */
+function gmailTitle(state: FakeGoogleState, address: string): string {
+  const count = fakeFeed(state, address, 'primary').count
+  return count > 0 ? `Inbox (${count}) - ${address} - Gmail` : `Inbox - ${address} - Gmail`
+}
+
+function atomEntry(entry: FakeFeedEntry): string {
+  return `  <entry>
+    <title>${escapeHtml(entry.title)}</title>
+    <summary></summary>
+    <link rel="alternate" href="/gmail/?message_id=${encodeURIComponent(entry.id)}&amp;view=conv&amp;extsrc=atom" type="text/html" />
+    <modified>${escapeHtml(entry.issued)}</modified>
+    <issued>${escapeHtml(entry.issued)}</issued>
+    <id>tag:gmail.google.com,2004:${escapeHtml(entry.id)}</id>
+    <author>
+      <name>${escapeHtml(entry.authorName)}</name>
+      <email>${escapeHtml(entry.authorEmail)}</email>
+    </author>
+  </entry>
+`
+}
+
+function atomFeed(state: FakeGoogleState, address: string, feed: FakeFeedName): string {
+  const { count, entries } = fakeFeed(state, address, feed)
+  // The fake label feeds get another title, so that Shifted cannot depend on their title.
+  const label = decodeURIComponent(FEED_LABELS[feed])
+  const title =
+    feed === 'whole-inbox'
+      ? `Gmail - Inbox for ${address}`
+      : `Gmail - Label '${label}' for ${address}`
   return `<?xml version="1.0" encoding="UTF-8"?>
 <feed version="0.3" xmlns="http://purl.org/atom/ns#">
-  <title>Gmail - Inbox for ${escapeHtml(address)}</title>
+  <title>${escapeHtml(title)}</title>
   <tagline>New messages in your Gmail Inbox</tagline>
-  <fullcount>${state.unreadCount}</fullcount>
+  <fullcount>${count}</fullcount>
   <link rel="alternate" href="/gmail/" type="text/html" />
   <modified>${new Date().toISOString()}</modified>
-</feed>
+${entries.map(atomEntry).join('')}</feed>
 `
+}
+
+function isFakeFeedName(value: unknown): value is FakeFeedName {
+  return typeof value === 'string' && (FAKE_FEED_NAMES as string[]).includes(value)
+}
+
+function isFakeFeedEntry(value: unknown): value is FakeFeedEntry {
+  if (typeof value !== 'object' || value === null) return false
+  const entry = value as Record<string, unknown>
+  return ['id', 'title', 'authorName', 'authorEmail', 'issued'].every(
+    (key) => typeof entry[key] === 'string'
+  )
+}
+
+/** The route of one fake feed. */
+function feedRoute(feed: FakeFeedName): Route {
+  return {
+    method: 'GET',
+    path: `/feed/atom/${FEED_LABELS[feed]}`,
+    handler: (context) => {
+      const { res, state } = context
+      if (state.feedFailure === 'http-500') {
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('Fake feed failure')
+        return
+      }
+      if (state.feedFailure === 'sign-in-redirect') {
+        redirect(res, '/signin')
+        return
+      }
+      const session = currentSession(context)
+      if (!session) {
+        res.writeHead(401, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          ...clearCookieHeaders(context)
+        })
+        res.end('Unauthorized')
+        return
+      }
+      sendXml(res, atomFeed(state, session.address, feed))
+    }
+  }
 }
 
 /**
@@ -391,21 +525,49 @@ export const routes: Route[] = [
       })
     }
   },
+  ...FAKE_FEED_NAMES.map(feedRoute),
   {
-    method: 'GET',
-    path: '/feed/atom/',
-    handler: (context) => {
-      const { res, state } = context
-      const session = currentSession(context)
-      if (!session) {
-        res.writeHead(401, {
-          'Content-Type': 'text/plain; charset=utf-8',
-          ...clearCookieHeaders(context)
-        })
-        res.end('Unauthorized')
+    // Control route for tests: set the count and the entries of one fake feed. The body
+    // is JSON: { address?, feed: "whole-inbox" | "primary" | "important", count, entries? }.
+    method: 'POST',
+    path: '/control/feed',
+    handler: async ({ req, res, state }) => {
+      const body = JSON.parse(await readBody(req)) as Record<string, unknown>
+      const { address, feed, count } = body
+      const entries = body['entries'] ?? []
+      if (
+        (address !== undefined && typeof address !== 'string') ||
+        !isFakeFeedName(feed) ||
+        typeof count !== 'number' ||
+        !Number.isInteger(count) ||
+        count < 0 ||
+        !Array.isArray(entries) ||
+        !entries.every(isFakeFeedEntry)
+      ) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('Bad feed setting')
         return
       }
-      sendXml(res, atomFeed(state, session.address))
+      state.feeds.set(`${address ?? EVERY_ADDRESS} ${feed}`, { count, entries })
+      res.writeHead(204)
+      res.end()
+    }
+  },
+  {
+    // Control route for tests: make every feed fail, or work again. The body is JSON:
+    // { fail: true | "http-500" | "sign-in-redirect" | false }. `true` means HTTP 500.
+    method: 'POST',
+    path: '/control/feed-failure',
+    handler: async ({ req, res, state }) => {
+      const { fail } = JSON.parse(await readBody(req)) as Record<string, unknown>
+      if (typeof fail !== 'boolean' && fail !== 'http-500' && fail !== 'sign-in-redirect') {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('Bad feed failure setting')
+        return
+      }
+      state.feedFailure = fail === true ? 'http-500' : fail === false ? null : fail
+      res.writeHead(204)
+      res.end()
     }
   },
   {
@@ -427,7 +589,8 @@ export async function startFakeGoogle(
 ): Promise<FakeGoogleServer> {
   const state: FakeGoogleState = {
     address: FAKE_ADDRESS,
-    unreadCount: 0,
+    feeds: new Map(),
+    feedFailure: null,
     sessions: new Map(),
     ...initialState
   }
@@ -471,6 +634,22 @@ export async function startFakeGoogle(
     async signOut(): Promise<void> {
       const response = await fetch(`${url}/control/sign-out`, { method: 'POST' })
       if (!response.ok) throw new Error(`The fake sign-out failed: HTTP ${response.status}`)
+    },
+    async setFeed(setting: FakeFeedSetting): Promise<void> {
+      const response = await fetch(`${url}/control/feed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(setting)
+      })
+      if (!response.ok) throw new Error(`The fake feed setting failed: HTTP ${response.status}`)
+    },
+    async setFeedFailure(fail: boolean | FakeFeedFailure): Promise<void> {
+      const response = await fetch(`${url}/control/feed-failure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fail })
+      })
+      if (!response.ok) throw new Error(`The fake feed failure failed: HTTP ${response.status}`)
     },
     addRoute(route: Route): void {
       serverRoutes.unshift(route)

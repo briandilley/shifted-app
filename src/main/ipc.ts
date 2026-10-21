@@ -3,7 +3,13 @@
  * them. Google's pages have no preload script, so they cannot call them.
  */
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
-import { IpcChannel, isGoogleApp, type SettingsRequest, type ViewBounds } from '../shared/api'
+import {
+  IpcChannel,
+  isGoogleApp,
+  isUnreadCountSource,
+  type SettingsRequest,
+  type ViewBounds
+} from '../shared/api'
 import { buildAccountMenu } from './account-menu'
 import type { Accounts } from './accounts'
 import { isAccountId } from './config'
@@ -128,6 +134,12 @@ export function registerIpc(
   ipcMain.on(IpcChannel.resetPagePermissions, (event, accountId: unknown) => {
     if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
     accounts.resetPagePermissions(accountId)
+  })
+
+  ipcMain.on(IpcChannel.setUnreadCountSource, (event, accountId: unknown, source: unknown) => {
+    if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
+    if (!isUnreadCountSource(source)) return
+    accounts.setUnreadCountSource(accountId, source)
   })
 
   ipcMain.handle(IpcChannel.getScreenSources, (event) => {

@@ -16,6 +16,8 @@ export interface ShiftedTestRecords {
   showItemInFolder: string[]
   /** The download notifications that Shifted showed, so that a test can click one. */
   downloadNotifications: Notification[]
+  /** The total that the app badge shows now. */
+  appBadgeTotal: number
 }
 
 interface TestRecordsHolder {
@@ -29,7 +31,8 @@ export function testRecords(): ShiftedTestRecords | undefined {
   holder.shiftedTestRecords ??= {
     openExternal: [],
     showItemInFolder: [],
-    downloadNotifications: []
+    downloadNotifications: [],
+    appBadgeTotal: 0
   }
   return holder.shiftedTestRecords
 }

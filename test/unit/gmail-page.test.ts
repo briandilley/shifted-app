@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import {
+  parseInboxTitle,
   parseProfilePhotoUrl,
   PROFILE_PHOTO_SELECTORS,
   profilePhotoScript
@@ -85,5 +86,25 @@ describe('gmail-page', () => {
       .filter((file) => readFileSync(file, 'utf8').includes('executeJavaScript('))
       .map((file) => relative(SRC, file))
     expect(callers).toEqual([join('main', 'gmail-page.ts')])
+  })
+})
+
+describe('parseInboxTitle', () => {
+  it('reads the number next to Inbox', () => {
+    expect(parseInboxTitle('Inbox (12) - a@b.com - Gmail')).toBe(12)
+    expect(parseInboxTitle('Inbox (1) - name@company.com - Gmail')).toBe(1)
+    expect(parseInboxTitle('Inbox (1,234) - a@b.com - Gmail')).toBe(1234)
+  })
+
+  it('reads a title with no number as 0', () => {
+    expect(parseInboxTitle('Inbox - a@b.com - Gmail')).toBe(0)
+  })
+
+  it('returns nothing for a thread title or another page', () => {
+    expect(parseInboxTitle('Lunch on Friday - a@b.com - Gmail')).toBeUndefined()
+    expect(parseInboxTitle('Inbox zero tips - a@b.com - Gmail')).toBeUndefined()
+    expect(parseInboxTitle('Starred - a@b.com - Gmail')).toBeUndefined()
+    expect(parseInboxTitle('Gmail')).toBeUndefined()
+    expect(parseInboxTitle('')).toBeUndefined()
   })
 })

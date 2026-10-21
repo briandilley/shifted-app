@@ -90,6 +90,48 @@ export type PermissionAnswer = 'allow' | 'deny'
 /** The saved answers of one account. A missing permission has no answer yet. */
 export type PagePermissions = Partial<Record<AskedPermission, PermissionAnswer>>
 
+/** A Gmail Atom feed that the unread count can come from. */
+export type FeedChoice = 'whole-inbox' | 'primary' | 'important'
+
+/**
+ * Where the unread count of an account comes from. "Automatic" learns the feed that
+ * matches the number next to Inbox in Gmail.
+ */
+export type UnreadCountSource = 'automatic' | FeedChoice
+
+/** The choices of "Unread count source", in the order that the configuration window shows them. */
+export const UNREAD_COUNT_SOURCES: readonly UnreadCountSource[] = [
+  'automatic',
+  'primary',
+  'whole-inbox',
+  'important'
+]
+
+/** The names of the choices of "Unread count source" on screen. */
+export const UNREAD_COUNT_SOURCE_NAMES: Readonly<Record<UnreadCountSource, string>> = {
+  automatic: 'Automatic',
+  primary: 'Primary',
+  'whole-inbox': 'Whole inbox',
+  important: 'Important'
+}
+
+export function isFeedChoice(value: unknown): value is FeedChoice {
+  return value === 'whole-inbox' || value === 'primary' || value === 'important'
+}
+
+export function isUnreadCountSource(value: unknown): value is UnreadCountSource {
+  return value === 'automatic' || isFeedChoice(value)
+}
+
+/** The largest unread count that a badge shows as a number. */
+export const MAX_BADGE_NUMBER = 99
+
+/** The text of an unread badge: nothing for 0, the number, or "99+" for more than 99. */
+export function unreadBadgeText(count: number): string {
+  if (count <= 0) return ''
+  return count > MAX_BADGE_NUMBER ? `${MAX_BADGE_NUMBER}+` : String(count)
+}
+
 /** The values of the General page of the configuration window. */
 export interface GeneralConfig {
   /** Show a save dialog for each download. Off by default. */
@@ -110,6 +152,19 @@ export interface AccountState {
   photo: string | null
   /** The saved answers to the asked page permissions. */
   pagePermissions: PagePermissions
+  /** The unread count from the last good read of the feed, or `null` before the first one. */
+  unreadCount: number | null
+  /**
+   * Why the last read of the feed failed, for example "Signed out" or "Offline", or `null`
+   * if it worked. The badge shows a warning mark in place of the number.
+   */
+  unreadWarning: string | null
+  /** "Unread count source" in the configuration. */
+  unreadCountSource: UnreadCountSource
+  /** The feed that Shifted reads now for the unread count. */
+  unreadFeed: FeedChoice
+  /** True when "Automatic" found the feed that matches Gmail and saved it. */
+  automaticFeedLearned: boolean
 }
 
 /** The state that the screens of Shifted show. */
@@ -226,6 +281,8 @@ export interface ShiftedApi {
   setAskWhereToSave(value: boolean): void
   /** Forget the saved answers to the page permissions of the account. */
   resetPagePermissions(accountId: string): void
+  /** Set "Unread count source" of the account. */
+  setUnreadCountSource(accountId: string, source: UnreadCountSource): void
   /** The screen picker only: the screens and windows that the person can share. */
   getScreenSources(): Promise<ScreenPickerInfo>
   /** The screen picker only: share this screen or window. `null` shares nothing. */
@@ -265,6 +322,7 @@ export const IpcChannel = {
   showSettingsPage: 'shifted:show-settings-page',
   setAskWhereToSave: 'shifted:set-ask-where-to-save',
   resetPagePermissions: 'shifted:reset-page-permissions',
+  setUnreadCountSource: 'shifted:set-unread-count-source',
   getScreenSources: 'shifted:get-screen-sources',
   chooseScreenSource: 'shifted:choose-screen-source'
 } as const

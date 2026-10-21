@@ -47,7 +47,7 @@ describe('the fake Google test server', () => {
     const headers = { cookie }
 
     const gmail = await fetch(`${fakeGoogle.url}/gmail/`, { headers })
-    expect(await gmail.text()).toContain('<title>Inbox (0) - test@example.com - Gmail</title>')
+    expect(await gmail.text()).toContain('<title>Inbox - test@example.com - Gmail</title>')
 
     const calendar = await fetch(`${fakeGoogle.url}/calendar/`, { headers })
     expect(await calendar.text()).toContain('<title>Calendar</title>')
@@ -158,5 +158,70 @@ describe('the fake Google test server', () => {
       `attachment; filename="${FAKE_DOWNLOAD_NAME}"`
     )
     expect(await download.text()).toBe(FAKE_DOWNLOAD_CONTENT)
+  })
+
+  it('sets the count and the entries of each feed for each address, and the Gmail title follows Primary', async () => {
+    const one = await signIn(fakeGoogle, 'feed-one@example.com')
+    const two = await signIn(fakeGoogle, 'feed-two@example.com')
+    const feedOf = async (cookie: string, label: string): Promise<string> =>
+      (await fetch(`${fakeGoogle.url}/feed/atom/${label}`, { headers: { cookie } })).text()
+    const titleOf = async (cookie: string): Promise<string> =>
+      /<title>([^<]*)<\/title>/.exec(
+        await (await fetch(`${fakeGoogle.url}/gmail/`, { headers: { cookie } })).text()
+      )?.[1] ?? ''
+
+    await fakeGoogle.setFeed({ feed: 'whole-inbox', count: 40 })
+    await fakeGoogle.setFeed({
+      address: 'feed-one@example.com',
+      feed: 'primary',
+      count: 3,
+      entries: [
+        {
+          id: '101',
+          title: 'Hello <there>',
+          authorName: 'Sam',
+          authorEmail: 'sam@example.com',
+          issued: '2026-10-21T09:00:00Z'
+        }
+      ]
+    })
+    await fakeGoogle.setFeed({ address: 'feed-two@example.com', feed: 'important', count: 7 })
+
+    const primaryOne = await feedOf(one, '%5Esq_ig_i_personal')
+    expect(primaryOne).toContain('<fullcount>3</fullcount>')
+    expect(primaryOne).toContain('<title>Hello &lt;there&gt;</title>')
+    expect(primaryOne).toContain('<email>sam@example.com</email>')
+    expect(await feedOf(one, '')).toContain('<fullcount>40</fullcount>')
+    expect(await feedOf(two, '')).toContain('<fullcount>40</fullcount>')
+    expect(await feedOf(two, '%5Esq_ig_i_personal')).toContain('<fullcount>0</fullcount>')
+    expect(await feedOf(two, '%5Eiim')).toContain('<fullcount>7</fullcount>')
+
+    expect(await titleOf(one)).toBe('Inbox (3) - feed-one@example.com - Gmail')
+    expect(await titleOf(two)).toBe('Inbox - feed-two@example.com - Gmail')
+
+    const bad = await fetch(`${fakeGoogle.url}/control/feed`, {
+      method: 'POST',
+      body: JSON.stringify({ feed: 'spam', count: 1 })
+    })
+    expect(bad.status).toBe(400)
+  })
+
+  it('makes every feed fail with HTTP 500 until the failure is turned off', async () => {
+    const cookie = await signIn(fakeGoogle, 'failure@example.com')
+    await fakeGoogle.setFeedFailure(true)
+    for (const label of ['', '%5Esq_ig_i_personal', '%5Eiim']) {
+      const response = await fetch(`${fakeGoogle.url}/feed/atom/${label}`, { headers: { cookie } })
+      expect(response.status).toBe(500)
+    }
+    await fakeGoogle.setFeedFailure('sign-in-redirect')
+    const redirected = await fetch(`${fakeGoogle.url}/feed/atom/%5Eiim`, {
+      headers: { cookie },
+      redirect: 'manual'
+    })
+    expect(redirected.status).toBe(302)
+    expect(redirected.headers.get('location')).toBe('/signin')
+    await fakeGoogle.setFeedFailure(false)
+    const response = await fetch(`${fakeGoogle.url}/feed/atom/`, { headers: { cookie } })
+    expect(response.status).toBe(200)
   })
 })

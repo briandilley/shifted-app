@@ -13,6 +13,10 @@
   --button-hover: #f1f3f4;
   --notice-background: #f1f3f4;
   --focus: #1a73e8;
+  --badge-background: #d93025;
+  --badge-text: #ffffff;
+  --warning-background: #f9ab00;
+  --warning-text: #202124;
   font-family:
     system-ui,
     -apple-system,
@@ -37,6 +41,10 @@
     --button-hover: #3c4043;
     --notice-background: #2d2e30;
     --focus: #8ab4f8;
+    --badge-background: #f28b82;
+    --badge-text: #202124;
+    --warning-background: #fdd663;
+    --warning-text: #202124;
   }
 }
 

@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import {
   calendarUrl,
+  FEED_LABELS,
   feedUrl,
   gmailComposeUrl,
   gmailUrl,
@@ -58,6 +59,15 @@ describe('google-urls', () => {
     expect(signInUrl()).toBe('http://127.0.0.1:4555/signin')
     expect(feedUrl()).toBe('http://127.0.0.1:4555/feed/atom/')
     expect(feedUrl('%5Eiim')).toBe('http://127.0.0.1:4555/feed/atom/%5Eiim')
+  })
+
+  it('has the feed label of each unread count source', () => {
+    expect(FEED_LABELS).toEqual({
+      'whole-inbox': '',
+      primary: '%5Esq_ig_i_personal',
+      important: '%5Eiim'
+    })
+    expect(feedUrl(FEED_LABELS.important)).toBe('https://mail.google.com/mail/u/0/feed/atom/%5Eiim')
   })
 
   it('accepts profile photo URLs only on Google photo hosts with https', () => {

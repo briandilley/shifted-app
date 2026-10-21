@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed version="0.3" xmlns="http://purl.org/atom/ns#">
+<title>Gmail - Inbox for alex.example@gmail.com</title>
+<tagline>New messages in your Gmail Inbox</tagline>
+<fullcount>2</fullcount>
+<link rel="alternate" href="https://mail.google.com/mail/u/0" type="text/html" />
+<modified>2026-10-21T09:30:00Z</modified>
+<entry>
+<title>Lunch on Friday &amp; a question</title>
+<summary>Made-up text for a test.</summary>
+<link rel="alternate" href="https://mail.google.com/mail/u/0?account_id=alex.example@gmail.com&amp;message_id=18f0000000000001&amp;view=conv&amp;extsrc=atom" type="text/html" />
+<modified>2026-10-21T09:15:00Z</modified>
+<issued>2026-10-21T09:15:00Z</issued>
+<id>tag:gmail.google.com,2004:1800000000000000001</id>
+<author>
+<name>Sam Sender</name>
+<email>sam@example.com</email>
+</author>
+</entry>
+<entry>
+<title>2026</title>
+<summary>A subject that is only a number.</summary>
+<link rel="alternate" href="https://mail.google.com/mail/u/0?account_id=alex.example@gmail.com&amp;message_id=18f0000000000002&amp;view=conv&amp;extsrc=atom" type="text/html" />
+<modified>2026-10-21T08:00:00Z</modified>
+<issued>2026-10-21T08:00:00Z</issued>
+<id>tag:gmail.google.com,2004:1800000000000000002</id>
+<author>
+<name>O&apos;Brien &#43; Co</name>
+<email>obrien@example.org</email>
+</author>
+</entry>
+</feed>

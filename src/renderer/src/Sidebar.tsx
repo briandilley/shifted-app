@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AccountState } from '../../shared/api'
-import { accountLabel, accountTooltip } from './account-display'
+import { unreadBadgeText, type AccountState } from '../../shared/api'
+import { accountLabel, accountTooltip, unreadDescription } from './account-display'
 import Avatar from './Avatar'
 import styles from './Sidebar.module.css'
 
@@ -36,6 +36,33 @@ function inOrder(accounts: AccountState[], ids: string[]): AccountState[] {
   const byId = new Map(accounts.map((account) => [account.id, account]))
   const ordered = ids.flatMap((id) => byId.get(id) ?? [])
   return ordered.length === accounts.length ? ordered : accounts
+}
+
+/**
+ * The unread badge on the corner of the avatar: the unread count, nothing for 0, or a
+ * warning mark when the last read of the feed failed. The tooltip of the warning mark
+ * says why.
+ */
+function UnreadBadge({ account }: { account: AccountState }): React.JSX.Element | null {
+  if (account.unreadWarning !== null) {
+    return (
+      <span
+        className={`${styles.badge} ${styles.warning}`}
+        title={account.unreadWarning}
+        data-unread-badge="warning"
+        aria-hidden="true"
+      >
+        !
+      </span>
+    )
+  }
+  const text = unreadBadgeText(account.unreadCount ?? 0)
+  if (!text) return null
+  return (
+    <span className={styles.badge} data-unread-badge="count" aria-hidden="true">
+      {text}
+    </span>
+  )
 }
 
 /**
@@ -132,6 +159,8 @@ function Sidebar({ accounts, selectedAccountId }: SidebarProps): React.JSX.Eleme
       <ul className={styles.list}>
         {shown.map((account) => {
           const selected = account.id === selectedAccountId
+          const unread = unreadDescription(account)
+          const unreadId = `unread-${account.id}`
           const dragging = drag?.moving === true && drag.accountId === account.id
           return (
             <li
@@ -151,6 +180,7 @@ function Sidebar({ accounts, selectedAccountId }: SidebarProps): React.JSX.Eleme
                 className={styles.account}
                 aria-label={accountLabel(account)}
                 aria-current={selected ? 'true' : undefined}
+                aria-describedby={unread ? unreadId : undefined}
                 title={accountTooltip(account)}
                 data-account-id={account.id}
                 onClick={() => {
@@ -164,8 +194,12 @@ function Sidebar({ accounts, selectedAccountId }: SidebarProps): React.JSX.Eleme
                 onKeyDown={(event) => onKeyDown(event, account.id)}
               >
                 <Avatar account={account} size={44} />
-                {/* Prompt 04 puts the unread badge here. */}
-                <span className={styles.badgeSlot} aria-hidden="true" />
+                <UnreadBadge account={account} />
+                {unread && (
+                  <span id={unreadId} hidden>
+                    {unread}
+                  </span>
+                )}
               </button>
             </li>
           )

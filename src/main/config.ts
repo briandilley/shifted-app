@@ -11,12 +11,21 @@ import {
   isAskedPermission,
   isGoogleApp,
   isSameColor,
+  isUnreadCountSource,
   type GeneralConfig,
   type GoogleApp,
-  type PagePermissions
+  type PagePermissions,
+  type UnreadCountSource
 } from '../shared/api'
 
 export { ACCOUNT_COLORS, type GeneralConfig, type GoogleApp, type PagePermissions }
+
+/** The feeds that "Automatic" can choose: the one that matches the number next to Inbox. */
+export type AutomaticFeed = 'whole-inbox' | 'primary'
+
+function isAutomaticFeed(value: unknown): value is AutomaticFeed {
+  return value === 'whole-inbox' || value === 'primary'
+}
 
 /** The version of the format of the configuration file. A later prompt can change it. */
 export const CONFIG_VERSION = 1
@@ -39,6 +48,13 @@ export interface AccountConfig {
   lastGoogleApp: GoogleApp
   /** The saved answers to the asked page permissions. Missing in a file from phase 02. */
   pagePermissions: PagePermissions
+  /** "Unread count source". Missing in a file from phase 03, which means "automatic". */
+  unreadCountSource: UnreadCountSource
+  /**
+   * The feed that "Automatic" chose for this account, or `null` until it chose one.
+   * Missing in a file from phase 03, which means `null`.
+   */
+  automaticFeed: AutomaticFeed | null
 }
 
 export interface Config {
@@ -104,7 +120,21 @@ function parseAccount(value: unknown): AccountConfig | undefined {
   if (!isGoogleApp(lastGoogleApp)) return undefined
   const pagePermissions = parsePagePermissions(value['pagePermissions'])
   if (!pagePermissions) return undefined
-  return { id, email, nickname, color, order, lastGoogleApp, pagePermissions }
+  const unreadCountSource = value['unreadCountSource'] ?? 'automatic'
+  if (!isUnreadCountSource(unreadCountSource)) return undefined
+  const automaticFeed = value['automaticFeed'] ?? null
+  if (automaticFeed !== null && !isAutomaticFeed(automaticFeed)) return undefined
+  return {
+    id,
+    email,
+    nickname,
+    color,
+    order,
+    lastGoogleApp,
+    pagePermissions,
+    unreadCountSource,
+    automaticFeed
+  }
 }
 
 /**
@@ -157,7 +187,9 @@ export function newAccount(existing: readonly AccountConfig[]): AccountConfig {
     color: nextAccountColor(existing),
     order: lastOrder + 1,
     lastGoogleApp: 'gmail',
-    pagePermissions: {}
+    pagePermissions: {},
+    unreadCountSource: 'automatic',
+    automaticFeed: null
   }
 }
 

@@ -21,7 +21,9 @@ const ACCOUNT: AccountConfig = {
   color: '#1A73E8',
   order: 0,
   lastGoogleApp: 'gmail',
-  pagePermissions: {}
+  pagePermissions: {},
+  unreadCountSource: 'automatic',
+  automaticFeed: null
 }
 
 const GENERAL = { askWhereToSave: false }
@@ -137,6 +139,33 @@ describe('parseConfig', () => {
       pagePermissions: { 'display-capture': 'deny' }
     })
   })
+
+  it('reads a file from phase 03, with no unread count source', () => {
+    const oldAccount: Record<string, unknown> = { ...ACCOUNT }
+    delete oldAccount['unreadCountSource']
+    delete oldAccount['automaticFeed']
+    expect(parseConfig({ version: 1, accounts: [oldAccount] })?.accounts[0]).toEqual({
+      ...ACCOUNT,
+      unreadCountSource: 'automatic',
+      automaticFeed: null
+    })
+  })
+
+  it('reads every unread count source and refuses a wrong one', () => {
+    const withSource = (unreadCountSource: unknown, automaticFeed: unknown = null): unknown => ({
+      version: 1,
+      accounts: [{ ...ACCOUNT, unreadCountSource, automaticFeed }]
+    })
+    for (const source of ['automatic', 'primary', 'whole-inbox', 'important']) {
+      expect(parseConfig(withSource(source))?.accounts[0]?.unreadCountSource).toBe(source)
+    }
+    expect(parseConfig(withSource('automatic', 'whole-inbox'))?.accounts[0]?.automaticFeed).toBe(
+      'whole-inbox'
+    )
+    expect(parseConfig(withSource('spam'))).toBeUndefined()
+    expect(parseConfig(withSource('automatic', 'important'))).toBeUndefined()
+    expect(parseConfig(withSource('automatic', 3))).toBeUndefined()
+  })
 })
 
 describe('newAccount', () => {
@@ -149,7 +178,9 @@ describe('newAccount', () => {
       color: ACCOUNT_COLORS[0],
       order: 0,
       lastGoogleApp: 'gmail',
-      pagePermissions: {}
+      pagePermissions: {},
+      unreadCountSource: 'automatic',
+      automaticFeed: null
     })
   })
 

@@ -45,10 +45,23 @@ export function signInUrl(): string {
 }
 
 /**
+ * The feed label of each feed that the unread count can come from, in URL form.
+ *
+ * - Whole inbox: the plain feed, with no label.
+ * - Primary: the Primary category tab (`^sq_ig_i_personal`).
+ * - Important: the messages that Gmail marks important (`^iim`).
+ */
+export const FEED_LABELS: Readonly<Record<'whole-inbox' | 'primary' | 'important', string>> = {
+  'whole-inbox': '',
+  primary: '%5Esq_ig_i_personal',
+  important: '%5Eiim'
+}
+
+/**
  * The URL of the Gmail Atom feed for one label.
  *
  * @param label The feed label, already in URL form (for example `%5Esq_ig_i_personal`).
- *   An empty label gives the feed of the whole inbox.
+ *   An empty label gives the feed of the whole inbox. See `FEED_LABELS`.
  */
 export function feedUrl(label = ''): string {
   const server = testServerUrl()

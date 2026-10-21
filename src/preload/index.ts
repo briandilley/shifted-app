@@ -6,6 +6,7 @@ import {
   type SettingsRequest,
   type ShiftedApi,
   type ShiftedState,
+  type UnreadCountSource,
   type ViewBounds
 } from '../shared/api'
 
@@ -47,6 +48,8 @@ const shifted: ShiftedApi = Object.freeze({
   setAskWhereToSave: (value: boolean) => ipcRenderer.send(IpcChannel.setAskWhereToSave, value),
   resetPagePermissions: (accountId: string) =>
     ipcRenderer.send(IpcChannel.resetPagePermissions, accountId),
+  setUnreadCountSource: (accountId: string, source: UnreadCountSource) =>
+    ipcRenderer.send(IpcChannel.setUnreadCountSource, accountId, source),
   getScreenSources: () =>
     ipcRenderer.invoke(IpcChannel.getScreenSources) as Promise<ScreenPickerInfo>,
   chooseScreenSource: (sourceId: string | null) =>
