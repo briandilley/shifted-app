@@ -85,6 +85,16 @@ test('the sign-in window is 480 by 720 points, with the title "Sign in"', async 
   await mainWindow.getByRole('button', { name: 'Add account' }).click()
   await expect(mainWindow.getByText('Signing in…')).toBeVisible()
   await findPage(shifted, (url) => url === `${fakeGoogle.url}/signin`)
+  // macOS fits a window to the screen when it shows, so measure the window after it shows.
+  await expect
+    .poll(() =>
+      shifted.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()
+          .find((candidate) => candidate.webContents.getURL().includes('#sign-in'))
+          ?.isVisible()
+      )
+    )
+    .toBe(true)
   const signInWindow = await shifted.evaluate(({ BrowserWindow, screen }) => {
     const window = BrowserWindow.getAllWindows().find((candidate) =>
       candidate.webContents.getURL().includes('#sign-in')

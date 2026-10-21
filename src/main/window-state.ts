@@ -103,6 +103,11 @@ export function restoredBounds(
 /** Reads and writes `window-state.json`, and saves the state of the main window. */
 export class WindowStateKeeper {
   private timer: ReturnType<typeof setTimeout> | null = null
+  /**
+   * False until the window shows for the first time. A window that starts hidden is not
+   * maximized yet, so saving it then would lose the saved "maximized".
+   */
+  private shown = false
 
   constructor(private readonly path: string) {}
 
@@ -117,9 +122,13 @@ export class WindowStateKeeper {
 
   /**
    * Save the size and the position of the window a short time after each change. Save at
-   * once when the window closes or hides.
+   * once when the window closes or hides. Save nothing before the window first shows.
    */
   track(window: BrowserWindow): void {
+    this.shown = window.isVisible()
+    window.once('show', () => {
+      this.shown = true
+    })
     const later = (): void => {
       if (this.timer) clearTimeout(this.timer)
       this.timer = setTimeout(() => {
@@ -140,7 +149,9 @@ export class WindowStateKeeper {
   }
 
   private save(window: BrowserWindow): void {
-    if (window.isDestroyed() || window.isMinimized() || window.isFullScreen()) return
+    if (!this.shown || window.isDestroyed() || window.isMinimized() || window.isFullScreen()) {
+      return
+    }
     const state: WindowState = { bounds: window.getNormalBounds(), maximized: window.isMaximized() }
     try {
       mkdirSync(dirname(this.path), { recursive: true })

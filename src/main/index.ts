@@ -148,7 +148,12 @@ function createMainWindow(options: MainWindowOptions): BrowserWindow {
   const stopBackdrop = accounts.subscribe(() => backdrop.update())
   mainWindow.on('closed', stopBackdrop)
 
-  if (saved?.maximized) mainWindow.maximize()
+  // A window that was maximized comes back maximized. `maximize()` also shows a hidden
+  // window, so a window that starts hidden (opened at login) maximizes when it first shows.
+  if (saved?.maximized) {
+    if (options.hidden) mainWindow.once('show', () => mainWindow.maximize())
+    else mainWindow.maximize()
+  }
   windowState.track(mainWindow)
 
   mainWindow.once('ready-to-show', () => {
