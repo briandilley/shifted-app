@@ -274,7 +274,7 @@ test('remove an account from the context menu: it is gone from the sidebar and t
   const accelerator = await shifted.evaluate(
     ({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById('settings')?.accelerator
   )
-  expect(accelerator).toBe('CmdOrCtrl+,')
+  expect(accelerator).toBe('CommandOrControl+,')
 
   await answerRemoveDialog(shifted, 'Remove')
   await chooseFromAccountMenu(shifted, sidebarAccount(mainWindow, ONE), 'Remove')

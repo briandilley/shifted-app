@@ -56,10 +56,9 @@ describe('parsePageNotification', () => {
 
 describe('the snooze menus', () => {
   const actions = {
-    openSettings: () => undefined,
+    runShortcut: () => undefined,
     snooze: () => undefined,
-    stopSnooze: () => undefined,
-    showSnoozeChoices: () => undefined
+    stopSnooze: () => undefined
   }
 
   it('have the four choices and "Stop snooze", which is off when no snooze runs', () => {
@@ -80,11 +79,11 @@ describe('the snooze menus', () => {
 
   it('the app menu has the "Snooze" submenu and Cmd+Shift+S on each platform', () => {
     for (const platform of ['darwin', 'win32', 'linux'] as const) {
-      const appMenu = appMenuTemplate(actions, null, platform)[0]
+      const appMenu = appMenuTemplate(actions, null, [], platform)[0]
       const submenu = Array.isArray(appMenu?.submenu) ? appMenu.submenu : []
       expect(submenu.find((item) => item.id === 'snooze')?.label).toBe('Snooze')
       expect(submenu.find((item) => item.id === 'snooze-choices')?.accelerator).toBe(
-        'CmdOrCtrl+Shift+S'
+        'CommandOrControl+Shift+S'
       )
     }
   })

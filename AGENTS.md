@@ -49,3 +49,5 @@ resources/                files that ship with the app (window icon)
 
 - `SHIFTED_TEST_SERVER`: when set, every function in `src/main/google-urls.ts` returns a URL on that fake Google server.
 - `SHIFTED_USER_DATA_DIR`: when set, Shifted uses that folder as its user data folder. Each end-to-end test sets its own.
+- `SHIFTED_TEST_SLEEP_MS`: in test mode, the time from leaving a Google app to its sleep, in place of 5 minutes.
+- `SHIFTED_TEST_READ_INTERVAL_MS`: in test mode, the time between two reads of the feed of an account, with no random delay.

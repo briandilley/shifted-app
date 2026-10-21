@@ -221,10 +221,42 @@ export interface Snooze {
   until: number | null
 }
 
+/**
+ * "Background loading": which Google apps stay loaded in the background. See "Background
+ * loading" in `docs/spec/PRODUCT.md`.
+ *
+ * - `everything`: Gmail and Calendar of every account.
+ * - `calendars-only`: Calendar of every account, and the Google apps of the selected account.
+ * - `selected-account-only`: the Google apps of the selected account.
+ */
+export type BackgroundLoading = 'everything' | 'calendars-only' | 'selected-account-only'
+
+/** The values of "Background loading", in the order that the configuration window shows them. */
+export const BACKGROUND_LOADING_VALUES: readonly BackgroundLoading[] = [
+  'everything',
+  'calendars-only',
+  'selected-account-only'
+]
+
+/** The names of the values of "Background loading" on screen. */
+export const BACKGROUND_LOADING_NAMES: Readonly<Record<BackgroundLoading, string>> = {
+  everything: 'Everything',
+  'calendars-only': 'Calendars only',
+  'selected-account-only': 'Selected account only'
+}
+
+export function isBackgroundLoading(value: unknown): value is BackgroundLoading {
+  return (BACKGROUND_LOADING_VALUES as readonly unknown[]).includes(value)
+}
+
 /** The values of the General page of the configuration window. */
 export interface GeneralConfig {
   /** Show a save dialog for each download. Off by default. */
   askWhereToSave: boolean
+  /** "Background loading". `everything` by default. */
+  backgroundLoading: BackgroundLoading
+  /** "Open at login". Off by default. */
+  openAtLogin: boolean
 }
 
 /** One account, as the screens of Shifted see it. */
@@ -385,6 +417,10 @@ export interface ShiftedApi {
   onShowSettingsPage(listener: (request: SettingsRequest) => void): () => void
   /** Turn "Ask where to save each file" on or off. */
   setAskWhereToSave(value: boolean): void
+  /** Set "Background loading". */
+  setBackgroundLoading(value: BackgroundLoading): void
+  /** Turn "Open at login" on or off. */
+  setOpenAtLogin(value: boolean): void
   /** Forget the saved answers to the page permissions of the account. */
   resetPagePermissions(accountId: string): void
   /** Set "Unread count source" of the account. */
@@ -461,6 +497,8 @@ export const IpcChannel = {
   setViewBounds: 'shifted:set-view-bounds',
   showSettingsPage: 'shifted:show-settings-page',
   setAskWhereToSave: 'shifted:set-ask-where-to-save',
+  setBackgroundLoading: 'shifted:set-background-loading',
+  setOpenAtLogin: 'shifted:set-open-at-login',
   resetPagePermissions: 'shifted:reset-page-permissions',
   setUnreadCountSource: 'shifted:set-unread-count-source',
   setNotificationSwitch: 'shifted:set-notification-switch',

@@ -59,6 +59,11 @@ export class ChildWindows {
     return undefined
   }
 
+  /** True when the account has an open child window. */
+  hasWindows(accountId: string): boolean {
+    return [...(this.windows.get(accountId) ?? [])].some((window) => !window.isDestroyed())
+  }
+
   /** Give the child windows of the account a new title, for example after a rename. */
   setTitle(accountId: string, accountName: string): void {
     for (const window of this.windows.get(accountId) ?? []) {

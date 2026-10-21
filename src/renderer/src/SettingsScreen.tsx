@@ -4,6 +4,9 @@ import {
   ASKED_PERMISSION_NAMES,
   ASKED_PERMISSIONS,
   accountSettingsPage,
+  BACKGROUND_LOADING_NAMES,
+  BACKGROUND_LOADING_VALUES,
+  isBackgroundLoading,
   isSameColor,
   isTimeOfDay,
   isUnreadCountSource,
@@ -16,6 +19,7 @@ import {
   UNREAD_COUNT_SOURCES,
   WEEKDAYS,
   type AccountState,
+  type BackgroundLoading,
   type GeneralConfig,
   type QuietHours,
   type SettingsFocus,
@@ -496,6 +500,64 @@ function MailtoDefaultField({ state }: { state: ShiftedState }): React.JSX.Eleme
   )
 }
 
+/** What each value of "Background loading" does, below the field. */
+const BACKGROUND_LOADING_NOTES: Readonly<Record<BackgroundLoading, string>> = {
+  everything: 'Gmail and Calendar of every account stay loaded. This uses the most memory.',
+  'calendars-only':
+    'Calendar of every account stays loaded. Gmail of each other account sleeps 5 minutes after you leave it.',
+  'selected-account-only':
+    'Only the selected account stays loaded. Each other account sleeps 5 minutes after you leave it, and Calendar reminders come only from the selected account.'
+}
+
+/** "Open at login" and "Background loading". */
+function StartupFields({ general }: { general: GeneralConfig }): React.JSX.Element {
+  return (
+    <>
+      <div className={styles.field}>
+        <span className={styles.label}>Startup</span>
+        <label className={styles.switch}>
+          <input
+            type="checkbox"
+            role="switch"
+            className={controls.toggle}
+            checked={general.openAtLogin}
+            onChange={(event) => window.shifted.setOpenAtLogin(event.target.checked)}
+          />
+          Open at login
+        </label>
+        <p className={styles.note}>
+          Shifted starts with no window when you log in, so that badges and notifications work at
+          once.
+        </p>
+      </div>
+      <div className={styles.field}>
+        <label htmlFor="background-loading" className={styles.label}>
+          Background loading
+        </label>
+        <select
+          id="background-loading"
+          className={controls.select}
+          value={general.backgroundLoading}
+          onChange={(event) => {
+            const value = event.target.value
+            if (isBackgroundLoading(value)) window.shifted.setBackgroundLoading(value)
+          }}
+        >
+          {BACKGROUND_LOADING_VALUES.map((value) => (
+            <option key={value} value={value}>
+              {BACKGROUND_LOADING_NAMES[value]}
+            </option>
+          ))}
+        </select>
+        <p className={styles.note}>
+          {BACKGROUND_LOADING_NOTES[general.backgroundLoading]} Unread badges and new-mail
+          notifications work for every account.
+        </p>
+      </div>
+    </>
+  )
+}
+
 /** The General page. */
 function GeneralPage({ state }: { state: ShiftedState }): React.JSX.Element {
   const general: GeneralConfig = state.general
@@ -504,6 +566,7 @@ function GeneralPage({ state }: { state: ShiftedState }): React.JSX.Element {
       <h1 id="page-title" className={styles.title}>
         General
       </h1>
+      <StartupFields general={general} />
       <div className={styles.field}>
         <span className={styles.label}>Downloads</span>
         <label className={styles.switch}>

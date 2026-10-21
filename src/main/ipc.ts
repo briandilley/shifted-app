@@ -6,6 +6,7 @@
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import {
   IpcChannel,
+  isBackgroundLoading,
   isGoogleApp,
   isNotificationKind,
   isUnreadCountSource,
@@ -138,6 +139,16 @@ export function registerIpc(
   ipcMain.on(IpcChannel.setAskWhereToSave, (event, value: unknown) => {
     if (!isShiftedScreen(event.sender) || typeof value !== 'boolean') return
     accounts.setAskWhereToSave(value)
+  })
+
+  ipcMain.on(IpcChannel.setBackgroundLoading, (event, value: unknown) => {
+    if (!isShiftedScreen(event.sender) || !isBackgroundLoading(value)) return
+    accounts.setBackgroundLoading(value)
+  })
+
+  ipcMain.on(IpcChannel.setOpenAtLogin, (event, value: unknown) => {
+    if (!isShiftedScreen(event.sender) || typeof value !== 'boolean') return
+    accounts.setOpenAtLogin(value)
   })
 
   ipcMain.on(IpcChannel.resetPagePermissions, (event, accountId: unknown) => {

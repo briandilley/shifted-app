@@ -2,8 +2,9 @@
  * The Google app views of the accounts in the main window.
  *
  * Each account can have two views: one for Gmail and one for Calendar. Both use the
- * session of the account. Shifted makes a view the first time that it is needed and keeps
- * it after that. Showing a view never reloads it.
+ * session of the account. Shifted makes a view when it is needed. Showing a view never
+ * reloads it. "Background loading" decides which views stay (see `background-loading.ts`):
+ * a Google app that is asleep has no view, and its view is made again when it is needed.
  */
 import { WebContentsView, type BrowserWindow, type WebContents } from 'electron'
 import { GOOGLE_APPS, type GoogleApp, type ViewBounds } from '../shared/api'
@@ -87,6 +88,32 @@ export class AccountViews {
     for (const googleApp of GOOGLE_APPS) {
       this.get(accountId, googleApp)?.webContents.loadURL(googleAppUrl(googleApp)).catch(ignore)
     }
+  }
+
+  /** The Google apps that have a view now. */
+  list(): ShownGoogleApp[] {
+    return [...this.views].flatMap(([accountId, accountViews]) =>
+      [...accountViews.keys()].map((googleApp) => ({ accountId, googleApp }))
+    )
+  }
+
+  /**
+   * Put one Google app of an account to sleep: close its view and destroy its web
+   * contents. The session stays. The content area never shows a view that is asleep, so
+   * the view that shows does not close.
+   *
+   * @returns True when the Google app is asleep now.
+   */
+  sleep(accountId: string, googleApp: GoogleApp): boolean {
+    const shown = this.shown
+    if (shown?.accountId === accountId && shown.googleApp === googleApp) return false
+    const accountViews = this.views.get(accountId)
+    const view = accountViews?.get(googleApp)
+    if (!accountViews || !view) return true
+    accountViews.delete(googleApp)
+    if (accountViews.size === 0) this.views.delete(accountId)
+    this.closeView(view)
+    return true
   }
 
   /** Close the views of one account. */

@@ -39,6 +39,11 @@ export interface ShiftedTestRecords {
    * changes the default email app of the computer.
    */
   makeDefaultEmailApp: number
+  /**
+   * The values that "Open at login" asked for, in order. In test mode, Shifted never
+   * changes the login items of the computer.
+   */
+  openAtLogin: boolean[]
 }
 
 interface TestRecordsHolder {
@@ -55,7 +60,23 @@ export function testRecords(): ShiftedTestRecords | undefined {
     downloadNotifications: [],
     appBadgeTotal: 0,
     notifications: [],
-    makeDefaultEmailApp: 0
+    makeDefaultEmailApp: 0,
+    openAtLogin: []
   }
   return holder.shiftedTestRecords
+}
+
+/**
+ * A time that an end-to-end test makes shorter, in milliseconds, from an environment
+ * variable. Only in test mode. `undefined` when the variable is not set or not a number.
+ *
+ * - `SHIFTED_TEST_SLEEP_MS`: the time from leaving a Google app to its sleep.
+ * - `SHIFTED_TEST_READ_INTERVAL_MS`: the time between two reads of the feed of an account.
+ */
+export function testDurationMs(
+  name: 'SHIFTED_TEST_SLEEP_MS' | 'SHIFTED_TEST_READ_INTERVAL_MS'
+): number | undefined {
+  if (!isTestMode()) return undefined
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : undefined
 }

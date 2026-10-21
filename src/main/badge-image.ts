@@ -91,3 +91,37 @@ export function drawBadgeBitmap(text: string, size = BADGE_IMAGE_SIZE): BadgeBit
   })
   return { width: size, height: size, pixels }
 }
+
+/** The size of the unread badge on the tray icon, as a part of the icon size. */
+export const TRAY_BADGE_PART = 0.75
+
+/**
+ * Draw the tray icon of Windows and Linux: the app icon with the badge of the total
+ * unread count on its bottom-right corner. With no text, the icon stays as it is.
+ *
+ * @param icon The app icon at the size of the tray icon, as premultiplied BGRA pixels
+ *   (`nativeImage.toBitmap`). It must be square.
+ * @param text The text of the badge, for example "7" or "99+", or "" for no badge.
+ */
+export function drawTrayIconBitmap(icon: BadgeBitmap, text: string): BadgeBitmap {
+  const pixels = Buffer.from(icon.pixels)
+  if (text === '') return { width: icon.width, height: icon.height, pixels }
+  const badgeSize = Math.round(icon.width * TRAY_BADGE_PART)
+  const badge = drawBadgeBitmap(text, badgeSize)
+  const left = icon.width - badgeSize
+  const top = icon.height - badgeSize
+  // Put the badge over the icon: premultiplied "source over".
+  for (let y = 0; y < badgeSize; y++) {
+    for (let x = 0; x < badgeSize; x++) {
+      const from = (y * badgeSize + x) * 4
+      const alpha = (badge.pixels[from + 3] ?? 0) / 255
+      if (alpha === 0) continue
+      const to = ((top + y) * icon.width + left + x) * 4
+      for (let channel = 0; channel < 4; channel++) {
+        const below = pixels[to + channel] ?? 0
+        pixels[to + channel] = Math.round((badge.pixels[from + channel] ?? 0) + below * (1 - alpha))
+      }
+    }
+  }
+  return { width: icon.width, height: icon.height, pixels }
+}

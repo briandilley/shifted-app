@@ -5,7 +5,7 @@ import {
   unreadBadgeText,
   type AccountState
 } from '../../src/shared/api'
-import { BADGE_IMAGE_SIZE, drawBadgeBitmap } from '../../src/main/badge-image'
+import { BADGE_IMAGE_SIZE, drawBadgeBitmap, drawTrayIconBitmap } from '../../src/main/badge-image'
 import {
   appBadgeTotal,
   chooseAutomaticFeed,
@@ -201,5 +201,27 @@ describe('the badges', () => {
         0
       )
     expect(white(drawBadgeBitmap('99+').pixels)).toBeGreaterThan(white(pixels))
+  })
+
+  it('draws the tray icon: the app icon with the badge on its bottom-right corner', () => {
+    // A plain blue icon stands for the app icon.
+    const size = 32
+    const icon = Buffer.alloc(size * size * 4)
+    for (let offset = 0; offset < icon.length; offset += 4) icon.set([0xff, 0, 0, 0xff], offset)
+    const base = { width: size, height: size, pixels: icon }
+    const pixel = (pixels: Buffer, x: number, y: number): number[] => {
+      const offset = (y * size + x) * 4
+      return [...pixels.subarray(offset, offset + 4)]
+    }
+
+    // No unread messages: the icon stays as it is.
+    expect(drawTrayIconBitmap(base, '').pixels.equals(icon)).toBe(true)
+
+    const withBadge = drawTrayIconBitmap(base, '7').pixels
+    // The top-left corner keeps the icon. The edge of the badge circle is red.
+    expect(pixel(withBadge, 1, 1)).toEqual([0xff, 0, 0, 0xff])
+    expect(pixel(withBadge, 9, 20)).toEqual([0x25, 0x30, 0xd9, 255])
+    // The source icon does not change.
+    expect(pixel(icon, 9, 20)).toEqual([0xff, 0, 0, 0xff])
   })
 })

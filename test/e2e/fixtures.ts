@@ -15,6 +15,17 @@ import { FAKE_ADDRESS, startFakeGoogle, type FakeGoogleServer } from '../fake-go
 
 export const APP_ROOT = resolve(__dirname, '../..')
 
+/** Test options: what a test changes in the start of Shifted, with `test.use`. */
+export interface ShiftedOptions {
+  /**
+   * More environment variables for Shifted, for example `SHIFTED_TEST_SLEEP_MS` and
+   * `SHIFTED_TEST_READ_INTERVAL_MS` (see `src/main/test-hooks.ts`).
+   */
+  shiftedEnv: Record<string, string>
+  /** More command line arguments for Shifted, for example `--opened-at-login`. */
+  shiftedArgs: string[]
+}
+
 export interface ShiftedFixtures {
   /** The fake Google test server of this test. */
   fakeGoogle: FakeGoogleServer
@@ -27,7 +38,11 @@ export interface ShiftedFixtures {
 }
 
 /** The environment of Shifted in a test: the fake Google server and a user data folder. */
-function shiftedEnv(fakeGoogle: FakeGoogleServer, userDataDir: string): Record<string, string> {
+function launchEnv(
+  fakeGoogle: FakeGoogleServer,
+  userDataDir: string,
+  extra: Record<string, string> = {}
+): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value
@@ -36,18 +51,19 @@ function shiftedEnv(fakeGoogle: FakeGoogleServer, userDataDir: string): Record<s
   delete env['ELECTRON_RUN_AS_NODE']
   env['SHIFTED_TEST_SERVER'] = fakeGoogle.url
   env['SHIFTED_USER_DATA_DIR'] = userDataDir
-  return env
+  return { ...env, ...extra }
 }
 
 /** Start the built Shifted with the fake Google server and a user data folder. */
 export async function launchShifted(
   fakeGoogle: FakeGoogleServer,
-  userDataDir: string
+  userDataDir: string,
+  options: Partial<ShiftedOptions> = {}
 ): Promise<ElectronApplication> {
   return _electron.launch({
-    args: [APP_ROOT],
+    args: [APP_ROOT, ...(options.shiftedArgs ?? [])],
     cwd: APP_ROOT,
-    env: shiftedEnv(fakeGoogle, userDataDir),
+    env: launchEnv(fakeGoogle, userDataDir, options.shiftedEnv),
     // Playwright makes every page light by default. Shifted follows the light or dark mode
     // of the operating system, so the pages must see the mode that the main process sees.
     colorScheme: null
@@ -70,7 +86,7 @@ export function runSecondInstance(
   return new Promise((resolve, reject) => {
     const child = spawn(electronPath, [APP_ROOT, ...args], {
       cwd: APP_ROOT,
-      env: shiftedEnv(fakeGoogle, userDataDir),
+      env: launchEnv(fakeGoogle, userDataDir),
       stdio: 'ignore'
     })
     const timer = setTimeout(() => {
@@ -93,7 +109,9 @@ export function accountPickerPage(app: ElectronApplication): Promise<Page> {
   return findPage(app, (url) => url.startsWith('file:') && url.endsWith('#mailto-picker'))
 }
 
-export const test = base.extend<ShiftedFixtures>({
+export const test = base.extend<ShiftedOptions & ShiftedFixtures>({
+  shiftedEnv: [{}, { option: true }],
+  shiftedArgs: [[], { option: true }],
   // eslint-disable-next-line no-empty-pattern
   fakeGoogle: async ({}, use) => {
     const server = await startFakeGoogle()
@@ -106,8 +124,8 @@ export const test = base.extend<ShiftedFixtures>({
     await use(dir)
     rmSync(dir, { recursive: true, force: true })
   },
-  shifted: async ({ fakeGoogle, userDataDir }, use) => {
-    const app = await launchShifted(fakeGoogle, userDataDir)
+  shifted: async ({ fakeGoogle, userDataDir, shiftedEnv, shiftedArgs }, use) => {
+    const app = await launchShifted(fakeGoogle, userDataDir, { shiftedEnv, shiftedArgs })
     await use(app)
     await app.close()
   },
@@ -207,7 +225,7 @@ export async function visibleGoogleApp(app: ElectronApplication): Promise<Visibl
 
 export interface ConfigFile {
   version: number
-  general: { askWhereToSave: boolean }
+  general: { askWhereToSave: boolean; backgroundLoading?: string; openAtLogin?: boolean }
   mailto?: { defaultAccountId: string | null; lastAccountId: string | null }
   accounts: {
     id: string

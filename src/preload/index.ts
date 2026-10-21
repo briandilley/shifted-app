@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IpcChannel,
+  type BackgroundLoading,
   type GoogleApp,
   type MailtoPickerInfo,
   type NotificationKind,
@@ -49,6 +50,9 @@ const shifted: ShiftedApi = Object.freeze({
   onShowSettingsPage: (listener: (request: SettingsRequest) => void) =>
     listen(IpcChannel.showSettingsPage, listener),
   setAskWhereToSave: (value: boolean) => ipcRenderer.send(IpcChannel.setAskWhereToSave, value),
+  setBackgroundLoading: (value: BackgroundLoading) =>
+    ipcRenderer.send(IpcChannel.setBackgroundLoading, value),
+  setOpenAtLogin: (value: boolean) => ipcRenderer.send(IpcChannel.setOpenAtLogin, value),
   resetPagePermissions: (accountId: string) =>
     ipcRenderer.send(IpcChannel.resetPagePermissions, accountId),
   setUnreadCountSource: (accountId: string, source: UnreadCountSource) =>

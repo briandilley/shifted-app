@@ -11,6 +11,7 @@ import {
   type AccountState,
   type AccountStatus,
   type AskedPermission,
+  type BackgroundLoading,
   type GoogleApp,
   type NotificationKind,
   type PermissionAnswer,
@@ -28,6 +29,7 @@ import {
   flushAccountSession
 } from './account-session'
 import { AccountViews, type ShownGoogleApp } from './account-views'
+import { googleAppsToKeepLoaded, SleepTimers, type AccountGoogleApp } from './background-loading'
 import { ChildWindows } from './child-windows'
 import {
   moveAccount,
@@ -42,18 +44,31 @@ import { feedErrorText, readFeed, type FeedEntry, type FeedFetch, type FeedResul
 import { findProfilePhotoUrl, readInboxCount } from './gmail-page'
 import { FEED_LABELS, isProfilePhotoUrl } from './google-urls'
 import type { LinkHandlers } from './link-handlers'
+import { setOpenAtLogin } from './login-item'
 import { NewMailTracker } from './new-mail'
 import { isSnoozed, snoozeFor } from './notification-rules'
 import type { ProfilePhotos } from './profile-photos'
 import type { ScreenPicker } from './screen-picker'
 import { sessionGet } from './session-fetch'
 import { configureAccountSession, type SessionHandlerDeps } from './session-handlers'
+import { adjacentAccountId } from './shortcuts'
 import { SignInWindow } from './sign-in-window'
+import { testDurationMs } from './test-hooks'
 import { chooseAutomaticFeed, feedToRead } from './unread-counts'
 import { UnreadPoller, type ReadOutcome } from './unread-poller'
 
 function ignore(): void {
   // A request that failed or a view that closed. Nothing to do.
+}
+
+/**
+ * The options of the feed polling. An end-to-end test can make the time between two
+ * reads shorter, with no random delay.
+ */
+function unreadPollerOptions(): ConstructorParameters<typeof UnreadPoller>[1] {
+  const interval = testDurationMs('SHIFTED_TEST_READ_INTERVAL_MS')
+  if (interval === undefined) return {}
+  return { random: () => 0, delayMs: () => interval }
 }
 
 export type StateListener = (state: ShiftedState) => void
@@ -84,7 +99,15 @@ export class Accounts {
   private readonly unread = new Map<string, UnreadState>()
   /** The accounts whose automatic choice of feed runs now. */
   private readonly feedChoices = new Set<string>()
-  private readonly poller = new UnreadPoller((accountId) => this.readUnreadCount(accountId))
+  private readonly poller = new UnreadPoller(
+    (accountId) => this.readUnreadCount(accountId),
+    unreadPollerOptions()
+  )
+  /** The timers that put the Google apps that do not stay loaded to sleep. */
+  private readonly sleepTimers = new SleepTimers({
+    delayMs: testDurationMs('SHIFTED_TEST_SLEEP_MS'),
+    sleep: (app) => this.sleep(app)
+  })
   private readonly listeners = new Set<StateListener>()
   /** The entry IDs of the feed that Shifted saw for each account, in memory only. */
   private readonly newMail = new NewMailTracker()
@@ -318,6 +341,7 @@ export class Accounts {
     this.views = views
     window.on('closed', () => {
       views.closeAll()
+      this.sleepTimers.stopAll()
       if (this.views === views) this.views = null
       if (this.mainWindow === window) this.mainWindow = null
     })
@@ -367,6 +391,35 @@ export class Accounts {
     this.poller.readNow(accountId)
   }
 
+  /**
+   * Select the account at this place in the sidebar (Cmd+1 to Cmd+9). The first place
+   * is 0. If no account is at that place, do nothing.
+   */
+  selectAccountAt(index: number): void {
+    const account = this.config.accounts[index]
+    if (account) this.selectAccount(account.id)
+  }
+
+  /**
+   * Select the next account (`step` 1, Ctrl+Tab) or the previous account (`step` -1,
+   * Ctrl+Shift+Tab) in the sidebar. The order wraps around.
+   */
+  selectAdjacentAccount(step: 1 | -1): void {
+    const ids = this.config.accounts
+      .map((account) => account.id)
+      .filter((accountId) => !this.removals.has(accountId))
+    const accountId = adjacentAccountId(ids, this.selectedAccountId, step)
+    if (accountId) this.selectAccount(accountId)
+  }
+
+  /** Reload the Google app in the content area (Cmd+R). */
+  reloadGoogleApp(): void {
+    const account = this.selectedAccountId ? this.findAccount(this.selectedAccountId) : undefined
+    if (!account || this.status.get(account.id) !== 'signed-in') return
+    const contents = this.views?.get(account.id, account.lastGoogleApp)?.webContents
+    if (contents && !contents.isDestroyed()) contents.reload()
+  }
+
   /** Show this Google app of the selected account, and remember it for the account. */
   selectGoogleApp(googleApp: GoogleApp): void {
     const account = this.selectedAccountId ? this.findAccount(this.selectedAccountId) : undefined
@@ -411,6 +464,42 @@ export class Accounts {
     this.config = { ...this.config, general: { ...this.config.general, askWhereToSave: value } }
     this.store.save(this.config)
     this.publish()
+  }
+
+  /**
+   * Set "Background loading", and apply it at once: the Google apps that must stay loaded
+   * load now, and the others start their sleep timers.
+   */
+  setBackgroundLoading(value: BackgroundLoading): void {
+    if (this.config.general.backgroundLoading === value) return
+    this.config = {
+      ...this.config,
+      general: { ...this.config.general, backgroundLoading: value }
+    }
+    this.store.save(this.config)
+    this.updateViews()
+    this.publish()
+  }
+
+  /** Turn "Open at login" on or off, in the configuration and in the operating system. */
+  setOpenAtLogin(value: boolean): void {
+    if (this.config.general.openAtLogin === value) return
+    this.config = { ...this.config, general: { ...this.config.general, openAtLogin: value } }
+    this.store.save(this.config)
+    try {
+      setOpenAtLogin(value)
+    } catch (error) {
+      console.error('Shifted could not change "Open at login":', error)
+    }
+    this.publish()
+  }
+
+  /** Stop the feed polling and every timer. Shifted quits. */
+  shutdown(): void {
+    this.poller.stopAll()
+    this.sleepTimers.stopAll()
+    if (this.snoozeTimer) clearTimeout(this.snoozeTimer)
+    this.snoozeTimer = null
   }
 
   /**
@@ -834,7 +923,8 @@ export class Accounts {
 
   /**
    * Show the Google app that the selected account used last, if the account is signed
-   * in. Make its view if it does not exist yet. Hide every other view.
+   * in. Make its view if it does not exist yet, also if it was asleep. Hide every other
+   * view. Then apply "Background loading".
    */
   private updateViews(): void {
     const views = this.views
@@ -842,10 +932,40 @@ export class Accounts {
     const account = this.selectedAccountId ? this.findAccount(this.selectedAccountId) : undefined
     if (!account || this.status.get(account.id) !== 'signed-in' || this.removals.has(account.id)) {
       views.show(null)
-      return
+    } else {
+      views.ensure(account.id, account.lastGoogleApp)
+      views.show({ accountId: account.id, googleApp: account.lastGoogleApp })
     }
-    views.ensure(account.id, account.lastGoogleApp)
-    views.show({ accountId: account.id, googleApp: account.lastGoogleApp })
+    this.applyBackgroundLoading(views)
+  }
+
+  /**
+   * Apply "Background loading": load each Google app that must stay loaded, and start the
+   * sleep timer of each other loaded Google app. Only signed-in accounts load.
+   */
+  private applyBackgroundLoading(views: AccountViews): void {
+    const loadable = this.config.accounts
+      .filter((account) => this.status.get(account.id) === 'signed-in')
+      .filter((account) => !this.removals.has(account.id))
+      .map((account) => account.id)
+    const keep = googleAppsToKeepLoaded(
+      this.config.general.backgroundLoading,
+      loadable,
+      this.selectedAccountId
+    )
+    for (const app of keep) views.ensure(app.accountId, app.googleApp)
+    this.sleepTimers.sync(keep, views.list())
+  }
+
+  /**
+   * Put a Google app to sleep. A Google app of an account with an open child window does
+   * not sleep yet, because the child window closes with its opener page.
+   */
+  private sleep(app: AccountGoogleApp): boolean {
+    const views = this.views
+    if (!views) return true
+    if (this.childWindows.hasWindows(app.accountId)) return false
+    return views.sleep(app.accountId, app.googleApp)
   }
 
   private publish(): void {

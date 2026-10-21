@@ -194,7 +194,7 @@ test('snooze records no notification, but the badge changes', async ({
   const accelerator = await shifted.evaluate(
     ({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById('snooze-choices')?.accelerator
   )
-  expect(accelerator).toBe('CmdOrCtrl+Shift+S')
+  expect(accelerator).toBe('CommandOrControl+Shift+S')
   await shifted.evaluate(({ Menu }) => {
     const store = globalThis as { shiftedTestMenu?: Electron.Menu | null }
     store.shiftedTestMenu = null

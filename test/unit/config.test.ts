@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { defaultNotificationSwitches, defaultQuietHours } from '../../src/shared/api'
+import {
+  defaultNotificationSwitches,
+  defaultQuietHours,
+  type GeneralConfig
+} from '../../src/shared/api'
 import {
   ACCOUNT_COLORS,
   CONFIG_VERSION,
@@ -29,7 +33,11 @@ const ACCOUNT: AccountConfig = {
   quietHours: defaultQuietHours()
 }
 
-const GENERAL = { askWhereToSave: false }
+const GENERAL: GeneralConfig = {
+  askWhereToSave: false,
+  backgroundLoading: 'everything',
+  openAtLogin: false
+}
 const MAILTO = { defaultAccountId: null, lastAccountId: null }
 
 describe('ConfigStore', () => {
@@ -59,7 +67,7 @@ describe('ConfigStore', () => {
   it('writes config.json and reads it again', () => {
     const config: Config = {
       version: CONFIG_VERSION,
-      general: { askWhereToSave: true },
+      general: { askWhereToSave: true, backgroundLoading: 'calendars-only', openAtLogin: true },
       accounts: [{ ...ACCOUNT, pagePermissions: { media: 'allow', 'clipboard-read': 'deny' } }],
       snooze: { until: 1_800_000_000_000 },
       mailto: { defaultAccountId: ACCOUNT.id, lastAccountId: ACCOUNT.id }
@@ -178,6 +186,30 @@ describe('parseConfig', () => {
       ...ACCOUNT,
       pagePermissions: { 'display-capture': 'deny' }
     })
+  })
+
+  it('reads a file from phase 06, with no "Background loading" and no "Open at login"', () => {
+    expect(
+      parseConfig({ version: 1, general: { askWhereToSave: true }, accounts: [] })?.general
+    ).toEqual({ askWhereToSave: true, backgroundLoading: 'everything', openAtLogin: false })
+  })
+
+  it('reads and refuses values of "Background loading" and "Open at login"', () => {
+    const general = (value: Record<string, unknown>): unknown => ({
+      version: 1,
+      general: value,
+      accounts: []
+    })
+    expect(
+      parseConfig(general({ backgroundLoading: 'selected-account-only', openAtLogin: true }))
+        ?.general
+    ).toEqual({
+      askWhereToSave: false,
+      backgroundLoading: 'selected-account-only',
+      openAtLogin: true
+    })
+    expect(parseConfig(general({ backgroundLoading: 'some' }))).toBeUndefined()
+    expect(parseConfig(general({ openAtLogin: 'yes' }))).toBeUndefined()
   })
 
   it('reads a file from phase 03, with no unread count source', () => {

@@ -1,8 +1,7 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
 import { optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import type { Snooze } from '../shared/api'
 import { AccountPicker } from './account-picker'
 import { Accounts } from './accounts'
 import { AppBadge } from './app-badge'
@@ -13,19 +12,28 @@ import { registerIpc } from './ipc'
 import { newMailNotifications } from './new-mail'
 import { findMailtoArgument, isMailtoUrl } from './mailto'
 import { MailtoLinks } from './mailto-links'
+import { wasOpenedAtLogin } from './login-item'
 import { iconFromDataUrl, Notifier } from './notifications'
 import { registerPageNotifications } from './page-notifications'
 import { ProfilePhotos } from './profile-photos'
 import { ScreenPicker } from './screen-picker'
 import { SettingsWindow } from './settings-window'
+import { catchShortcuts, type ShortcutAction } from './shortcuts'
 import {
   loadShiftedScreen,
   lockShiftedScreen,
   shiftedScreenWebPreferences
 } from './shifted-screens'
+import { isTrayAvailable, ShiftedTray } from './tray'
 import { appBadgeTotal } from './unread-counts'
 import { applyUserAgent } from './user-agent'
-import { MainWindowBackdrop, mainWindowBackdrop, mainWindowFrameOptions } from './window-frame'
+import {
+  MAIN_WINDOW_MIN_SIZE,
+  MainWindowBackdrop,
+  mainWindowBackdrop,
+  mainWindowFrameOptions
+} from './window-frame'
+import { restoredBounds, WINDOW_STATE_FILE_NAME, WindowStateKeeper } from './window-state'
 
 /** The bundle identifier of Shifted. See "Name" in `docs/spec/PRODUCT.md`. */
 const APP_ID = 'io.github.briandilley.shifted'
@@ -53,6 +61,8 @@ let mailtoLinks: MailtoLinks | null = null
 let pendingMailto: string | undefined
 /** Show the main window. Set when Shifted is ready. */
 let showMainWindow: (() => BrowserWindow | null) | null = null
+/** True after Shifted starts to quit. Then closing the main window closes it. */
+let quitting = false
 
 function receiveMailto(url: string): void {
   if (mailtoLinks) mailtoLinks.open(url)
@@ -77,11 +87,38 @@ if (hasSingleInstanceLock) {
   })
 }
 
-function createMainWindow(accounts: Accounts, badge: AppBadge): BrowserWindow {
+/** The size of a new main window, in points. */
+const MAIN_WINDOW_SIZE = { width: 1200, height: 800 } as const
+
+interface MainWindowOptions {
+  accounts: Accounts
+  badge: AppBadge
+  windowState: WindowStateKeeper
+  /** True when the main window starts hidden, after Shifted opened at login. */
+  hidden: boolean
+  /**
+   * What closing the main window does: hide it, or quit Shifted (on Linux with no tray).
+   */
+  closeQuits: boolean
+}
+
+function createMainWindow(options: MainWindowOptions): BrowserWindow {
+  const { accounts, badge, windowState } = options
+  // Put the window back where it was. If that place is off every screen, center it.
+  const saved = windowState.load()
+  const bounds = restoredBounds(
+    saved?.bounds,
+    screen.getAllDisplays().map((display) => display.workArea),
+    screen.getPrimaryDisplay().workArea,
+    {
+      ...MAIN_WINDOW_SIZE,
+      minWidth: MAIN_WINDOW_MIN_SIZE.width,
+      minHeight: MAIN_WINDOW_MIN_SIZE.height
+    }
+  )
   const mainWindow = new BrowserWindow({
     title: 'Shifted',
-    width: 1200,
-    height: 800,
+    ...bounds,
     show: false,
     autoHideMenuBar: true,
     // The frame of `DESIGN.md`, and the backdrop of the selected account as the background
@@ -97,8 +134,29 @@ function createMainWindow(accounts: Accounts, badge: AppBadge): BrowserWindow {
   const stopBackdrop = accounts.subscribe(() => backdrop.update())
   mainWindow.on('closed', stopBackdrop)
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+  if (saved?.maximized) mainWindow.maximize()
+  windowState.track(mainWindow)
+
+  mainWindow.once('ready-to-show', () => {
+    if (!options.hidden) mainWindow.show()
+  })
+
+  // Closing the main window hides it. Shifted keeps running, so that badges and
+  // notifications continue. Quit closes it.
+  mainWindow.on('close', (event) => {
+    if (quitting) return
+    event.preventDefault()
+    if (options.closeQuits) {
+      app.quit()
+      return
+    }
+    // A window in full screen leaves a black screen on macOS if it hides at once.
+    if (mainWindow.isFullScreen()) {
+      mainWindow.once('leave-full-screen', () => mainWindow.hide())
+      mainWindow.setFullScreen(false)
+      return
+    }
+    mainWindow.hide()
   })
 
   // The screens of Shifted open no windows and never navigate away from their own page.
@@ -153,38 +211,128 @@ function startShifted(): void {
   // The app badge shows the sum of the unread counts of all accounts.
   const badge = new AppBadge()
   accounts.subscribe((state) => badge.update(appBadgeTotal(state.accounts)))
-  createMainWindow(accounts, badge)
 
-  /** Show the main window. On macOS, it can be closed while Shifted runs. Open it again. */
+  // On Windows and Linux, the tray icon shows the total and the main window. On Linux
+  // with no tray, closing the main window quits Shifted.
+  const hasTray = isTrayAvailable()
+  const windowState = new WindowStateKeeper(join(userData, WINDOW_STATE_FILE_NAME))
+  const mainWindowOptions = (hidden: boolean): MainWindowOptions => ({
+    accounts,
+    badge,
+    windowState,
+    hidden,
+    closeQuits: process.platform === 'linux' && !hasTray
+  })
+  // When Shifted opens at login, the main window starts hidden. The feeds start at once.
+  createMainWindow(mainWindowOptions(wasOpenedAtLogin()))
+
+  /** Make the main window again if it does not exist. Normally it only hides. */
   const ensureMainWindow = (): void => {
     if (
       !BrowserWindow.getAllWindows().some((window) => accounts.isMainScreen(window.webContents))
     ) {
-      createMainWindow(accounts, badge)
+      createMainWindow(mainWindowOptions(false))
     }
   }
 
-  // The app menu, with the "Snooze" submenu. It changes when the snooze changes.
-  const menuActions: AppMenuActions = {
-    openSettings: () => settings.open(),
-    snooze: (choice) => accounts.setSnooze(choice),
-    stopSnooze: () => accounts.stopSnooze(),
-    showSnoozeChoices: () => {
-      const window = BrowserWindow.getFocusedWindow()
-      const menu = buildSnoozeMenu(menuActions, accounts.snooze())
-      menu.popup(window ? { window } : {})
+  /** Show the main window and bring it to the front. */
+  const bringMainWindowToFront = (): BrowserWindow | null => {
+    ensureMainWindow()
+    const window =
+      BrowserWindow.getAllWindows().find((candidate) =>
+        accounts.isMainScreen(candidate.webContents)
+      ) ?? null
+    if (window) {
+      if (window.isMinimized()) window.restore()
+      window.show()
+      window.focus()
+    }
+    return window
+  }
+
+  const showSnoozeChoices = (): void => {
+    const window = BrowserWindow.getFocusedWindow()
+    const menu = buildSnoozeMenu(menuActions, accounts.snooze())
+    menu.popup(window ? { window } : {})
+  }
+
+  /** Run the action of a keyboard shortcut. See "Keyboard shortcuts" in `PRODUCT.md`. */
+  const runShortcut = (action: ShortcutAction): void => {
+    switch (action.kind) {
+      case 'select-account':
+        accounts.selectAccountAt(action.index)
+        return
+      case 'next-account':
+        accounts.selectAdjacentAccount(1)
+        return
+      case 'previous-account':
+        accounts.selectAdjacentAccount(-1)
+        return
+      case 'google-app':
+        accounts.selectGoogleApp(action.googleApp)
+        return
+      case 'reload':
+        accounts.reloadGoogleApp()
+        return
+      case 'settings':
+        settings.open()
+        return
+      case 'add-account':
+        bringMainWindowToFront()
+        accounts.addAccount()
+        return
+      case 'snooze':
+        showSnoozeChoices()
+        return
     }
   }
-  let menuSnooze: Snooze | null = accounts.snooze()
-  setAppMenu(menuActions, menuSnooze)
+
+  // A web view gets the keys before the app menu does. Catch the shortcuts in every web
+  // contents: the Google views, the child windows, and the screens of Shifted.
+  app.on('web-contents-created', (_event, contents) => {
+    catchShortcuts(contents, runShortcut)
+  })
+  for (const window of BrowserWindow.getAllWindows()) {
+    catchShortcuts(window.webContents, runShortcut)
+  }
+
+  // The app menu shows every shortcut. It changes when the snooze or the accounts change.
+  const menuActions: AppMenuActions = {
+    runShortcut,
+    snooze: (choice) => accounts.setSnooze(choice),
+    stopSnooze: () => accounts.stopSnooze()
+  }
+  const accountNames = (): string[] =>
+    accounts.state().accounts.map((account) => account.nickname || account.email || 'New account')
+  let menuKey = ''
+  const updateAppMenu = (): void => {
+    const snooze = accounts.snooze()
+    const names = accountNames()
+    const key = JSON.stringify([snooze, names])
+    if (key === menuKey) return
+    menuKey = key
+    setAppMenu(menuActions, snooze, names)
+    tray?.setSnooze(snooze)
+  }
+
+  // The tray icon of Windows and Linux.
+  const tray = hasTray
+    ? new ShiftedTray(
+        {
+          show: () => {
+            bringMainWindowToFront()
+          },
+          snooze: (choice) => accounts.setSnooze(choice),
+          stopSnooze: () => accounts.stopSnooze(),
+          quit: () => app.quit()
+        },
+        accounts.snooze()
+      )
+    : null
+  updateAppMenu()
   accounts.subscribe((state) => {
-    const same =
-      state.snooze === null || menuSnooze === null
-        ? state.snooze === menuSnooze
-        : state.snooze.until === menuSnooze.until
-    if (same) return
-    menuSnooze = state.snooze
-    setAppMenu(menuActions, menuSnooze)
+    updateAppMenu()
+    tray?.setTotal(appBadgeTotal(state.accounts))
   })
 
   // Notifications: new mail from the feed, and the web notifications of the Google pages.
@@ -222,6 +370,15 @@ function startShifted(): void {
     accountPhoto: (accountId) => accounts.account(accountId)?.photo ?? null
   })
 
+  // Quit closes all windows and ends the feed polling.
+  app.on('before-quit', () => {
+    quitting = true
+    accounts.shutdown()
+  })
+  app.on('quit', () => {
+    tray?.destroy()
+  })
+
   // A removal deletes a session from disk. Let it end before Shifted quits.
   app.on('will-quit', (event) => {
     const pending = accounts.pendingRemovals()
@@ -230,22 +387,13 @@ function startShifted(): void {
     void pending.then(() => app.quit())
   })
 
-  app.on('activate', ensureMainWindow)
+  // macOS: a click on the Dock icon shows the main window again.
+  app.on('activate', () => {
+    bringMainWindowToFront()
+  })
 
-  // `mailto:` links from other apps.
-  showMainWindow = (): BrowserWindow | null => {
-    ensureMainWindow()
-    const window =
-      BrowserWindow.getAllWindows().find((candidate) =>
-        accounts.isMainScreen(candidate.webContents)
-      ) ?? null
-    if (window) {
-      if (window.isMinimized()) window.restore()
-      window.show()
-      window.focus()
-    }
-    return window
-  }
+  // `mailto:` links from other apps, and a second copy of Shifted.
+  showMainWindow = bringMainWindowToFront
   mailtoLinks = new MailtoLinks(accounts, accountPicker, showMainWindow)
   if (pendingMailto) {
     const link = pendingMailto
@@ -258,8 +406,15 @@ if (hasSingleInstanceLock) {
   void app.whenReady().then(startShifted)
 }
 
+// Shifted keeps running in the background. Closing the main window only hides it, and
+// Quit is in the app menu and the tray menu.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  // Nothing to do. Without this handler, Electron would quit.
+})
+
+// During quit, a page that asks to stay open (`beforeunload`) does not stop the quit.
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-prevent-unload', (event) => {
+    if (quitting) event.preventDefault()
+  })
 })

@@ -11,6 +11,7 @@ import {
   defaultNotificationSwitches,
   defaultQuietHours,
   isAskedPermission,
+  isBackgroundLoading,
   isGoogleApp,
   isSameColor,
   isUnreadCountSource,
@@ -78,7 +79,10 @@ export interface AccountConfig {
 
 export interface Config {
   version: typeof CONFIG_VERSION
-  /** The values of the General page. Missing in a file from phase 02. */
+  /**
+   * The values of the General page. Missing in a file from phase 02. `backgroundLoading`
+   * and `openAtLogin` are missing in a file from phase 06.
+   */
   general: GeneralConfig
   accounts: AccountConfig[]
   /** The snooze, or `null` when it does not run. Missing in a file from phase 04. */
@@ -102,7 +106,7 @@ export function defaultMailtoConfig(): MailtoConfig {
 
 /** The General values of a new configuration. */
 export function defaultGeneralConfig(): GeneralConfig {
-  return { askWhereToSave: false }
+  return { askWhereToSave: false, backgroundLoading: 'everything', openAtLogin: false }
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -144,10 +148,18 @@ function parseGeneralConfig(value: unknown): GeneralConfig | undefined {
   const general = defaultGeneralConfig()
   if (value === undefined) return general
   if (!isRecord(value)) return undefined
-  const { askWhereToSave } = value
+  const { askWhereToSave, backgroundLoading, openAtLogin } = value
   if (askWhereToSave !== undefined) {
     if (typeof askWhereToSave !== 'boolean') return undefined
     general.askWhereToSave = askWhereToSave
+  }
+  if (backgroundLoading !== undefined) {
+    if (!isBackgroundLoading(backgroundLoading)) return undefined
+    general.backgroundLoading = backgroundLoading
+  }
+  if (openAtLogin !== undefined) {
+    if (typeof openAtLogin !== 'boolean') return undefined
+    general.openAtLogin = openAtLogin
   }
   return general
 }

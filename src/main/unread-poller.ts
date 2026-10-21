@@ -31,17 +31,24 @@ interface PollState {
 export interface UnreadPollerOptions {
   /** A number from 0 to 1, as `Math.random` gives. Tests replace it. */
   random?: () => number
+  /**
+   * The time before the next read, without the random delay, after this number of failed
+   * reads in a row. End-to-end tests make it shorter. The default is `nextReadDelayMs`.
+   */
+  delayMs?: (failures: number) => number
 }
 
 export class UnreadPoller {
   private readonly accounts = new Map<string, PollState>()
   private readonly random: () => number
+  private readonly delayMs: (failures: number) => number
 
   constructor(
     private readonly read: ReadAccount,
     options: UnreadPollerOptions = {}
   ) {
     this.random = options.random ?? Math.random
+    this.delayMs = options.delayMs ?? nextReadDelayMs
   }
 
   /**
@@ -116,6 +123,6 @@ export class UnreadPoller {
       void this.run(accountId, state)
       return
     }
-    this.schedule(accountId, state, nextReadDelayMs(state.failures) + randomJitterMs(this.random))
+    this.schedule(accountId, state, this.delayMs(state.failures) + randomJitterMs(this.random))
   }
 }

@@ -1,16 +1,17 @@
 /**
- * The application menu of Shifted. Its shortcuts of Shifted are Cmd+, (Ctrl+, on Windows
- * and Linux), which opens the configuration window, and Cmd+Shift+S (Ctrl+Shift+S), which
- * opens the snooze choices as a small menu. Prompt 07 adds the other shortcuts.
+ * The application menu of Shifted. It shows every shortcut of the shortcut table
+ * (`shortcuts.ts`), so that the menu shows the keys. A click on a menu item, or its
+ * shortcut when the app menu gets the keys, runs the same action as the shortcut.
  */
 import { Menu, type MenuItemConstructorOptions } from 'electron'
 import { SNOOZE_CHOICE_NAMES, SNOOZE_CHOICES, type Snooze, type SnoozeChoice } from '../shared/api'
+import { NUMBERED_ACCOUNTS, shortcut, type ShortcutAction } from './shortcuts'
 
 /** The id of the menu item that opens the configuration window. */
 export const SETTINGS_MENU_ITEM_ID = 'settings'
 
 /** The shortcut of the configuration window. */
-export const SETTINGS_ACCELERATOR = 'CmdOrCtrl+,'
+export const SETTINGS_ACCELERATOR = shortcut(SETTINGS_MENU_ITEM_ID).accelerator
 
 /** The id of the "Snooze" submenu. */
 export const SNOOZE_MENU_ITEM_ID = 'snooze'
@@ -19,7 +20,7 @@ export const SNOOZE_MENU_ITEM_ID = 'snooze'
 export const SNOOZE_CHOICES_MENU_ITEM_ID = 'snooze-choices'
 
 /** The shortcut that opens the snooze choices. */
-export const SNOOZE_ACCELERATOR = 'CmdOrCtrl+Shift+S'
+export const SNOOZE_ACCELERATOR = shortcut(SNOOZE_CHOICES_MENU_ITEM_ID).accelerator
 
 /** The label of the item that stops the snooze. */
 export const STOP_SNOOZE_LABEL = 'Stop snooze'
@@ -30,9 +31,19 @@ export interface SnoozeMenuActions {
 }
 
 export interface AppMenuActions extends SnoozeMenuActions {
-  openSettings(): void
-  /** Open the snooze choices as a small menu. */
-  showSnoozeChoices(): void
+  /** Run the action of a shortcut: Settings, Add account, the accounts, and so on. */
+  runShortcut(action: ShortcutAction): void
+}
+
+/** A menu item that runs the action of a shortcut, with the keys of the shortcut. */
+function shortcutItem(
+  actions: AppMenuActions,
+  id: string,
+  label: string,
+  enabled = true
+): MenuItemConstructorOptions {
+  const { action, accelerator } = shortcut(id)
+  return { id, label, accelerator, enabled, click: () => actions.runShortcut(action) }
 }
 
 /** The time of day of a snooze end, for example "14:30", or with the day if it is not today. */
@@ -76,40 +87,66 @@ export function snoozeMenuTemplate(
   ]
 }
 
+/**
+ * The application menu.
+ *
+ * @param accountNames The names of the accounts, in the order of the sidebar. The
+ *   Accounts menu has an item for each place from 1 to 9. A place with no account shows
+ *   "Account N" and is off.
+ */
 export function appMenuTemplate(
   actions: AppMenuActions,
   snooze: Snooze | null,
+  accountNames: readonly string[] = [],
   platform: NodeJS.Platform = process.platform
 ): MenuItemConstructorOptions[] {
-  const settings: MenuItemConstructorOptions = {
-    id: SETTINGS_MENU_ITEM_ID,
-    label: platform === 'darwin' ? 'Settings…' : 'Settings',
-    accelerator: SETTINGS_ACCELERATOR,
-    click: () => actions.openSettings()
-  }
+  const settings = shortcutItem(
+    actions,
+    SETTINGS_MENU_ITEM_ID,
+    platform === 'darwin' ? 'Settings…' : 'Settings'
+  )
   const snoozeItems: MenuItemConstructorOptions[] = [
     {
       id: SNOOZE_MENU_ITEM_ID,
       label: 'Snooze',
       submenu: snoozeMenuTemplate(actions, snooze)
     },
-    {
-      id: SNOOZE_CHOICES_MENU_ITEM_ID,
-      label: 'Snooze notifications…',
-      accelerator: SNOOZE_ACCELERATOR,
-      click: () => actions.showSnoozeChoices()
-    }
+    shortcutItem(actions, SNOOZE_CHOICES_MENU_ITEM_ID, 'Snooze notifications…')
   ]
   // The Edit menu gives copy, paste, and undo to the Google apps on macOS.
   const edit: MenuItemConstructorOptions = { role: 'editMenu' }
   const view: MenuItemConstructorOptions = {
     label: 'View',
     submenu: [
+      shortcutItem(actions, 'reload', 'Reload'),
+      { type: 'separator' },
+      shortcutItem(actions, 'gmail-tab', 'Gmail'),
+      shortcutItem(actions, 'calendar-tab', 'Calendar'),
+      { type: 'separator' },
       { role: 'resetZoom' },
       { role: 'zoomIn' },
       { role: 'zoomOut' },
       { type: 'separator' },
       { role: 'togglefullscreen' }
+    ]
+  }
+  const accounts: MenuItemConstructorOptions = {
+    label: 'Accounts',
+    submenu: [
+      shortcutItem(actions, 'add-account', 'Add account'),
+      { type: 'separator' },
+      shortcutItem(actions, 'next-account', 'Next account'),
+      shortcutItem(actions, 'previous-account', 'Previous account'),
+      { type: 'separator' },
+      ...Array.from({ length: NUMBERED_ACCOUNTS }, (_, index) => {
+        const name = accountNames[index]
+        return shortcutItem(
+          actions,
+          `account-${index + 1}`,
+          name ?? `Account ${index + 1}`,
+          name !== undefined
+        )
+      })
     ]
   }
   const windowMenu: MenuItemConstructorOptions = { role: 'windowMenu' }
@@ -136,6 +173,7 @@ export function appMenuTemplate(
       },
       edit,
       view,
+      accounts,
       windowMenu
     ]
   }
@@ -152,13 +190,21 @@ export function appMenuTemplate(
     },
     edit,
     view,
+    accounts,
     windowMenu
   ]
 }
 
-/** Set the application menu of Shifted. Call it again when the snooze changes. */
-export function setAppMenu(actions: AppMenuActions, snooze: Snooze | null): void {
-  Menu.setApplicationMenu(Menu.buildFromTemplate(appMenuTemplate(actions, snooze)))
+/**
+ * Set the application menu of Shifted. Call it again when the snooze or the names and
+ * the order of the accounts change.
+ */
+export function setAppMenu(
+  actions: AppMenuActions,
+  snooze: Snooze | null,
+  accountNames: readonly string[]
+): void {
+  Menu.setApplicationMenu(Menu.buildFromTemplate(appMenuTemplate(actions, snooze, accountNames)))
 }
 
 /** The small menu of the snooze choices that Cmd+Shift+S opens. */
