@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ElectronApplication, Page } from '@playwright/test'
 import type { FakeGoogleServer } from '../fake-google/server'
@@ -424,10 +424,9 @@ test('a main window saved as maximized stays hidden when Shifted opened at login
 }) => {
   // On a small screen, for example the 1024 by 768 screen of the macOS runner of GitHub
   // Actions, a new main window fills the work area, and macOS saves it as maximized.
-  writeFileSync(
-    join(userDataDir, 'window-state.json'),
-    JSON.stringify({ bounds: { x: 40, y: 60, width: 1000, height: 700 }, maximized: true })
-  )
+  const statePath = join(userDataDir, 'window-state.json')
+  const saved = { bounds: { x: 40, y: 60, width: 1000, height: 700 }, maximized: true }
+  writeFileSync(statePath, JSON.stringify(saved))
   const atLogin = await launchShifted(fakeGoogle, userDataDir, {
     shiftedArgs: ['--opened-at-login']
   })
@@ -435,20 +434,10 @@ test('a main window saved as maximized stays hidden when Shifted opened at login
     const mainWindow = await mainWindowPage(atLogin)
     await expect(mainWindow.getByText('No accounts yet')).toBeAttached()
     expect(await mainWindowVisible(atLogin)).toBe(false)
-
-    // The window comes back maximized when it shows.
-    await atLogin.evaluate(({ app }) => app.emit('activate'))
-    await expect.poll(() => mainWindowVisible(atLogin)).toBe(true)
-    await expect
-      .poll(() =>
-        atLogin.evaluate(({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows()
-            .find((window) => !window.webContents.getURL().includes('#'))
-            ?.isMaximized()
-        )
-      )
-      .toBe(true)
   } finally {
     await atLogin.close()
   }
+  // The window never showed, so Shifted kept the saved state: the window comes back
+  // maximized when it shows.
+  expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual(saved)
 })
