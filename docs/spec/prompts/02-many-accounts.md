@@ -10,17 +10,19 @@ At the end of this phase, Shifted has the sidebar, the tab bar, and the configur
 
 1. `AGENTS.md`
 2. `docs/spec/PRODUCT.md`, sections "Window and sidebar", "Accounts in the sidebar", "Google apps in each account", and "Configuration".
-3. `docs/spec/GLOSSARY.md`
+3. All of `docs/spec/DESIGN.md`.
+4. `docs/spec/GLOSSARY.md`
 
 ## Scope
 
 ### 1. Layout of the main window
 
 1. Replace the temporary buttons of prompt 01.
-2. The sidebar is on the left, about 68 points wide. It is a React view.
-3. The tab bar is at the top of the right side, about 36 points high. It is a React view.
-4. The content area is below the tab bar. It shows one `WebContentsView` at a time.
-5. Use the drawing in "Window and sidebar" as the layout.
+2. Build the main window as `DESIGN.md` describes in "How to build it in Electron". One React frame view draws the backdrop, the sidebar, the tab bar, and the selection tile.
+3. Use the sizes of `DESIGN.md`, section "The main window".
+4. The content area shows one Google `WebContentsView` at a time, on top of the frame view. Call `setBorderRadius(12)` on each Google view.
+5. When the selected account changes, use the backdrop of that account from `src/shared/account-colors.ts`. On Windows and Linux, also call `setTitleBarOverlay` with the new color.
+6. Respect reduced motion as `DESIGN.md` says in "Motion".
 
 ### 2. The sidebar
 
@@ -32,7 +34,7 @@ At the end of this phase, Shifted has the sidebar, the tab bar, and the configur
 
 ### 3. The avatar
 
-1. Give each new account the next color from this set of 8 colors: `#1A73E8`, `#D93025`, `#188038`, `#F9AB00`, `#A142F4`, `#12B5CB`, `#E8710A`, `#5F6368`.
+1. Give each new account the next color from the table in `DESIGN.md`, section "Account colors and backdrops".
 2. Draw a ring in the account color around the avatar.
 3. Write a module `src/main/gmail-page.ts`. Put every assumption about the markup of the Gmail page in this module, and nowhere else.
 4. In that module, after Gmail loads, find the profile photo of the account in the Gmail page. Run the lookup with `executeJavaScript` in the Gmail view. Return the image URL or nothing.
@@ -59,7 +61,7 @@ At the end of this phase, Shifted has the sidebar, the tab bar, and the configur
 ### 6. The configuration window
 
 1. Cmd+, (Ctrl+, on Windows and Linux) opens the configuration window. Its title is `Settings`.
-2. Use the drawing in "Configuration". The left list has General, Notifications, and one entry for each account.
+2. Use the drawing in "Configuration" of `PRODUCT.md` and the look in "The other windows" of `DESIGN.md`. The left list has General, Notifications, and one entry for each account.
 3. In this phase, the account page has: nickname, color (the 8 colors), Sign out, and Remove.
 4. In this phase, the General and Notifications pages are empty. Later prompts add their fields.
 5. Changes save at once. There is no Save button.
@@ -80,6 +82,8 @@ At the end of this phase, Shifted has the sidebar, the tab bar, and the configur
 
 - Unit: the color of a new account is the next color of the set, and the set repeats after 8 accounts.
 - Unit: reordering gives the expected order values.
+- Unit: the backdrop of each account color and mode equals the value in the table of `DESIGN.md`.
+- End-to-end: switch from account 1 to account 2. The background color of the frame view changes to the backdrop of account 2.
 - End-to-end: add three fake accounts. Click each one. The content area shows the fake Gmail of that account.
 - End-to-end: switch to the Calendar tab in account 2. Switch to account 1, then back to account 2. The Calendar tab is still selected.
 - End-to-end: drag account 3 to the top. Restart. Account 3 is still at the top.
@@ -92,7 +96,9 @@ At the end of this phase, Shifted has the sidebar, the tab bar, and the configur
 2. Make sure that each avatar shows the profile photo inside a colored ring.
 3. Click the Calendar tab of each account. Make sure that Calendar loads with no new sign-in.
 4. Drag an account to a new place. Quit and start Shifted. The order stays.
-5. Open the configuration window with Cmd+, (Ctrl+, on Windows and Linux). Change a color. The ring changes at once.
+5. Open the configuration window with Cmd+, (Ctrl+, on Windows and Linux). Change a color. Make sure that the ring and the backdrop change at once.
+6. Switch between accounts. Make sure that the selection tile slides to the new account and that the backdrop takes its tint.
+7. Switch the operating system between light mode and dark mode. Make sure that Shifted follows at once.
 
 ## When you finish
 

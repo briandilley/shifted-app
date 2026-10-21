@@ -15,15 +15,16 @@ At the end of this phase, the code repo has the spec and an `AGENTS.md`. It also
 1. `<spec>/README.md`
 2. `<spec>/PRODUCT.md`
 3. `<spec>/BUILD.md`
-4. `<spec>/GLOSSARY.md`
-5. All files in `<spec>/docs/adr/`
+4. `<spec>/DESIGN.md`
+5. `<spec>/GLOSSARY.md`
+6. All files in `<spec>/docs/adr/`
 
 ## Scope
 
 ### 1. Copy the spec
 
 1. Make the folder `docs/spec/` in the code repo.
-2. Copy these items from `<spec>` into `docs/spec/`: `PRODUCT.md`, `BUILD.md`, `GLOSSARY.md`, `PRIOR-ART.md`, the folder `docs/adr/`, and the folder `prompts/`.
+2. Copy these items from `<spec>` into `docs/spec/`: `PRODUCT.md`, `BUILD.md`, `DESIGN.md`, `GLOSSARY.md`, `PRIOR-ART.md`, the folder `docs/adr/`, and the folder `prompts/`.
 3. Keep the same names. For example, `<spec>/docs/adr/0001-wrap-gmail-web-interface.md` goes to `docs/spec/docs/adr/0001-wrap-gmail-web-interface.md`.
 4. Do not change the copied files. From now on, they are read-only.
 5. Make an empty `docs/decisions.md` with the title "Decisions made during the build".
@@ -33,7 +34,7 @@ At the end of this phase, the code repo has the spec and an `AGENTS.md`. It also
 
 1. Write `AGENTS.md` at the root of the code repo. Put these items in it:
    - One sentence that says what Shifted is.
-   - "Read `docs/spec/PRODUCT.md`, `docs/spec/BUILD.md`, `docs/spec/GLOSSARY.md`, and the ADRs in `docs/spec/docs/adr/` before you change code."
+   - "Read `docs/spec/PRODUCT.md`, `docs/spec/BUILD.md`, `docs/spec/DESIGN.md`, `docs/spec/GLOSSARY.md`, and the ADRs in `docs/spec/docs/adr/` before you change code."
    - The section "Rules for the build agent" from `docs/spec/BUILD.md`, copied word for word.
    - The npm commands from step 5 below, with one line each about what they do.
    - The folder layout from step 4 below.
@@ -58,6 +59,7 @@ src/main/google-urls.ts   every Google URL, and nothing else
 src/main/user-agent.ts    the user agent of Shifted
 src/preload/              preload scripts
 src/renderer/             the React screens of Shifted
+src/shared/               code that the main process and the renderer share
 test/unit/                Vitest tests
 test/e2e/                 Playwright tests
 test/fake-google/         the fake Google test server
@@ -94,9 +96,11 @@ Make these commands work:
 ### 8. The main window
 
 1. Open one main window with the title "Shifted", about 1200 by 800 points.
-2. Show an empty React page in it, with the text "No accounts yet".
-3. Apply the "Security" section of `docs/spec/BUILD.md` to this window.
-4. Use `resources/icon.png` as the window icon on Windows and Linux. In development mode on macOS, set the Dock icon with `app.dock.setIcon`.
+2. Write the color tokens of `docs/spec/DESIGN.md` into `src/renderer/theme.css`, with a light set and a dark set. Write the table of account colors and backdrops into `src/shared/account-colors.ts`.
+3. Use the window frame of `DESIGN.md`, section "Window frame on each platform". Set the background color of the window to `--base`.
+4. Show the frame view of `DESIGN.md`, with an empty content area that says "No accounts yet". Follow the light or dark mode of the operating system.
+5. Apply the "Security" section of `docs/spec/BUILD.md` to this window.
+6. Use `resources/icon.png` as the window icon on Windows and Linux. In development mode on macOS, set the Dock icon with `app.dock.setIcon`.
 
 ### 9. The fake Google test server
 
@@ -138,9 +142,10 @@ Make these commands work:
 1. Run `npm install`. It finishes with no error.
 2. Run `npm run dev`. A window called "Shifted" opens and shows "No accounts yet".
 3. Run `npm test` and `npm run test:e2e`. Both pass.
-4. Open `docs/spec/`. Make sure that it has `PRODUCT.md`, `BUILD.md`, `GLOSSARY.md`, `PRIOR-ART.md`, `docs/adr/`, and `prompts/`.
+4. Open `docs/spec/`. Make sure that it has `PRODUCT.md`, `BUILD.md`, `DESIGN.md`, `GLOSSARY.md`, `PRIOR-ART.md`, `docs/adr/`, and `prompts/`.
 5. Make sure that the window or the Dock shows the Shifted icon: three shifted mail cards with a red dot.
-6. Open `AGENTS.md`. Make sure that it has the rules for the build agent and the npm commands.
+6. Switch the operating system between light mode and dark mode. Make sure that the window follows at once.
+7. Open `AGENTS.md`. Make sure that it has the rules for the build agent and the npm commands.
 
 ## When you finish
 

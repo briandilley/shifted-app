@@ -11,7 +11,8 @@ At the end of this phase, Shifted meets every rule of the "Security" section. It
 1. `AGENTS.md`
 2. `docs/spec/BUILD.md`, section "Security".
 3. `docs/spec/PRODUCT.md`, sections "Failure states", "Shifted's own screens", and "Privacy and network".
-4. `docs/spec/GLOSSARY.md`
+4. `docs/spec/DESIGN.md`, sections "Contrast" and "Motion".
+5. `docs/spec/GLOSSARY.md`
 
 ## Scope
 
@@ -41,12 +42,12 @@ At the end of this phase, Shifted meets every rule of the "Security" section. It
 2. The tab bar uses the `tablist` and `tab` roles.
 3. You can move through the sidebar with the arrow keys and pick an account with Enter.
 4. Every field of the configuration window has a label.
-5. The text contrast meets WCAG AA in light mode and in dark mode.
+5. Add a unit test that computes the contrast of `--text` and `--text-secondary` on `--surface` and on all 16 backdrops of `DESIGN.md`. Each value must be at least 4.5 to 1.
 
 ### 5. Language, theme, and spell check
 
 1. Put every English string of the Shifted screens in one module, `src/renderer/strings.ts`.
-2. Follow the light or dark mode of the operating system with `prefers-color-scheme` in CSS and `nativeTheme` in the main process.
+2. Follow the light or dark mode of the operating system with `prefers-color-scheme` in CSS and `nativeTheme` in the main process. With reduced motion on, nothing moves.
 3. On Windows and Linux, set the spell check languages of each session from `app.getPreferredSystemLanguages()`. On macOS, the operating system checks spelling.
 
 ### 6. Memory

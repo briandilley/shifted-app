@@ -29,8 +29,16 @@ The thin bar above the content area, with one tab for each Google app of the sel
 _Avoid_: toolbar, header, app switcher
 
 **Content area**:
-The part of the window below the tab bar, which shows one Google app of one account.
+The rounded card below the tab bar, which shows one Google app of one account.
 _Avoid_: main view, web view, pane
+
+**Backdrop**:
+The background of a Shifted window around the content area. In the main window, it has a tint of the color of the selected account.
+_Avoid_: chrome, frame, window background
+
+**Selection tile**:
+The shape behind the selected account in the sidebar. It joins the content area.
+_Avoid_: highlight, account tab, selection box
 
 **Selected account**:
 The account whose Google app the content area shows now.

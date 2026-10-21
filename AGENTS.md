@@ -2,7 +2,7 @@
 
 Shifted is a desktop app that keeps several Gmail accounts in one window, each with Gmail and Google Calendar, and you switch between accounts from a sidebar.
 
-Read `docs/spec/PRODUCT.md`, `docs/spec/BUILD.md`, `docs/spec/GLOSSARY.md`, and the ADRs in `docs/spec/docs/adr/` before you change code.
+Read `docs/spec/PRODUCT.md`, `docs/spec/BUILD.md`, `docs/spec/DESIGN.md`, `docs/spec/GLOSSARY.md`, and the ADRs in `docs/spec/docs/adr/` before you change code.
 
 ## Rules for the build agent
 
@@ -30,6 +30,7 @@ src/main/google-urls.ts   every Google URL, and nothing else
 src/main/user-agent.ts    the user agent of Shifted
 src/preload/              preload scripts
 src/renderer/             the React screens of Shifted
+src/shared/               code that the main process and the renderer share
 test/unit/                Vitest tests
 test/e2e/                 Playwright tests
 test/fake-google/         the fake Google test server

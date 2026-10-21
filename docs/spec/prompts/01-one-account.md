@@ -12,7 +12,8 @@ At the end of this phase, you can add one account. You sign in to Google in a si
 2. `docs/spec/PRODUCT.md`, sections "Supported accounts", "Accounts and sessions", "Sign-in", and "Links" (rule 3).
 3. `docs/spec/docs/adr/0002-isolated-session-per-account.md`
 4. `docs/spec/docs/adr/0004-honest-user-agent-for-sign-in.md`
-5. `docs/spec/GLOSSARY.md`
+5. `docs/spec/DESIGN.md`, sections "The other windows" and "How to build it in Electron".
+6. `docs/spec/GLOSSARY.md`
 
 ## Scope
 
@@ -39,7 +40,7 @@ At the end of this phase, you can add one account. You sign in to Google in a si
 
 1. Add a temporary "Add account" button to the main window. Prompt 02 replaces it with the sidebar.
 2. When you click it, Shifted makes a new account and opens the sign-in window for it.
-3. The sign-in window is a separate window of about 480 by 720 points. It has two parts:
+3. The sign-in window is a separate window of about 480 by 720 points. Follow the look of the sign-in window in `DESIGN.md`. It has two parts:
    - A top line from Shifted, rendered by React: "Passkeys do not work in Shifted on this computer. If Google asks for a passkey, click "Try another way" and use your password." On Windows, show: "If Google asks for a passkey, Windows Hello opens."
    - Below the top line, a `WebContentsView` with the session of the account. It loads the sign-in URL from `google-urls.ts`.
 4. In the sign-in window, every page stays in the sign-in window. This includes company identity provider pages, for example Okta. Do not open the default browser from the sign-in window.

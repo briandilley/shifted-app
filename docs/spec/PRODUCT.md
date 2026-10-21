@@ -70,14 +70,17 @@ Example: you add `name@company.com`. Google sends you to `company.okta.com` to s
 Shifted has one main window. The sidebar is on the left. The tab bar is at the top of the right side. The content area is below the tab bar. The content area shows one Google app of one account at a time.
 
 ```
-+----+---------------------------+
-| [A]| [ Gmail ] [ Calendar ]    |
-| [B]+---------------------------+
-| [C]|                           |
-|    |   Calendar of account A   |
-| [+]|                           |
-+----+---------------------------+
++------------------------------------------------+
+| o o o   [ Gmail ]  Calendar      * alex@co.com |
+|  (A)  +----------------------------------------+
+| [(B)==|                                        |
+|  (C)  |        Gmail of account B              |
+|  (+)  |                                        |
+|       +----------------------------------------+
++------------------------------------------------+
 ```
+
+- The content area looks like a rounded card on the backdrop. The backdrop has a tint of the color of the selected account. The look is in `DESIGN.md`.
 
 - The sidebar shows one avatar for each account, in a vertical list. The add-account button is below the list.
 - The tab bar shows one tab for each Google app of the selected account: Gmail and Calendar. Click a tab to show that Google app in the content area.
@@ -89,7 +92,7 @@ Shifted has one main window. The sidebar is on the left. The tab bar is at the t
 - After Gmail of an account loads, Shifted reads the profile photo from the Gmail page and saves a copy on disk. If Shifted cannot read the photo, it shows the first letter of the account name on the account color.
 - Shifted learns the email address of each account from the title of its Atom feed, `Gmail - Inbox for <address>`.
 - The account name is the email address. You can give an account a nickname. When you point to an account, Shifted shows the nickname and the address.
-- Each new account gets the next color from a fixed set of 8 colors. You can change the color of an account.
+- Each new account gets the next color from a fixed set of 8 colors. The colors are in `DESIGN.md`. You can change the color of an account.
 - You drag an account to change the order. The order decides the numbers of Cmd+1 to Cmd+9.
 - The context menu of an account (right-click) has: Rename, Color, Notifications, Sign out, and Remove.
 - Remove asks you to confirm, then deletes the account and its session.
@@ -259,7 +262,7 @@ Shifted saves the configuration in one JSON file in its app data folder. The ses
 ## Shifted's own screens
 
 - The screens of Shifted are in English only in version 1. Gmail and Calendar keep the language of each Google account.
-- The screens of Shifted follow the light or dark mode of the operating system.
+- The screens of Shifted follow the light or dark mode of the operating system. The look of both modes is in `DESIGN.md`.
 - Shifted marks spelling mistakes in Gmail and Calendar, in the languages of the operating system.
 
 ## Failure states
