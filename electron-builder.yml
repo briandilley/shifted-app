@@ -4,6 +4,9 @@ productName: Shifted
 directories:
   buildResources: build
   output: dist
+# One name scheme for every package, so the packages of each platform and architecture
+# never overwrite each other when the release workflow collects them.
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 files:
   - 'out/**/*'
   - 'resources/**/*'
@@ -12,6 +15,11 @@ asarUnpack:
   - resources/**
 mac:
   category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
   # macOS asks once for the camera and the microphone, and shows these reasons.
@@ -20,6 +28,9 @@ mac:
     NSMicrophoneUsageDescription: A Gmail or Calendar page asks to use the microphone, for example in a Google Chat huddle.
 win:
   executableName: Shifted
+  target:
+    - target: nsis
+      arch: [x64]
 linux:
   target:
     - AppImage

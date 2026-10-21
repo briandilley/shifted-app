@@ -22,7 +22,8 @@
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
     "postinstall": "install-electron && electron-builder install-app-deps",
-    "build:unpack": "npm run build && electron-builder --dir"
+    "build:unpack": "npm run build && electron-builder --dir",
+    "package": "npm run build && electron-builder --publish never -c.mac.identity=null"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

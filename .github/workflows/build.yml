@@ -1,0 +1,80 @@
+# Builds unsigned packages of Shifted on macOS, Windows, and Linux.
+# Every run keeps the packages as workflow artifacts. A tag that starts with "v" also
+# attaches them to a GitHub release. Signed installers and auto-update are the optional
+# prompt 11 of the spec repo, https://github.com/briandilley/shifted.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      # No certificate: electron-builder makes unsigned packages. macOS still gets the
+      # ad hoc signature that an Apple silicon Mac needs to start the app.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+
+      - name: Install the packages
+        run: npm ci
+
+      - name: Build the unsigned packages
+        run: npm run package
+
+      - name: Keep the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: shifted-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Attach the packages to the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Get the packages
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: Make the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" packages/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Shifted $TAG" \
+            --notes "Unsigned packages of Shifted for macOS (Apple silicon and Intel), Windows, and Linux. See the README for how to open an unsigned build. Shifted was built by an AI coding agent from the prompts in https://github.com/briandilley/shifted."

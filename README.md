@@ -2,6 +2,12 @@
 
 Shifted is a desktop app that keeps several Gmail accounts in one window. Each account shows Gmail and Google Calendar with Google's own web pages, and you switch between the accounts from a sidebar.
 
+An AI coding agent built this code from the prompts and the spec in [briandilley/shifted](https://github.com/briandilley/shifted). The section "The spec" at the end tells how the two repos connect.
+
+## Download
+
+The [releases page](https://github.com/briandilley/shifted-app/releases) has unsigned packages for macOS (Apple silicon and Intel), Windows, and Linux. The workflow `.github/workflows/build.yml` makes them for each tag that starts with `v`. The packages of other builds are in the artifacts of each run of that workflow.
+
 ## What you need
 
 - Node.js 22.12 or newer. Node.js includes npm.
@@ -13,7 +19,7 @@ Shifted is a desktop app that keeps several Gmail accounts in one window. Each a
 1. Get the code:
 
    ```sh
-   git clone <address of this repo> shifted-app
+   git clone https://github.com/briandilley/shifted-app.git
    cd shifted-app
    ```
 
@@ -35,27 +41,25 @@ To run the tests, use `npm test` (unit tests) and `npm run test:e2e` (end-to-end
 
 ## How to build it
 
-1. Build the app into the `out/` folder:
+Make an unsigned package for the computer that you use now. The command builds the app into the `out/` folder, then packages it:
 
-   ```sh
-   npm run build
-   ```
+```sh
+npm run package
+```
 
-2. Make an unsigned package for the computer that you use now:
+The package is in the `dist/` folder. `<arch>` is `arm64` or `x64`:
 
-   ```sh
-   npx electron-builder --publish never -c.mac.identity=null
-   ```
+| Platform | Package                                                                   |
+| -------- | ------------------------------------------------------------------------- |
+| macOS    | `Shifted-<version>-mac-<arch>.dmg` and `Shifted-<version>-mac-<arch>.zip` |
+| Windows  | `Shifted-<version>-win-x64.exe`                                           |
+| Linux    | `Shifted-<version>-linux-x86_64.AppImage`                                 |
 
-The package is in the `dist/` folder:
+The package is not signed. Signed installers are not part of version 1.
 
-| Platform | Package                                                 |
-| -------- | ------------------------------------------------------- |
-| macOS    | `Shifted-<version>.dmg` and `Shifted-<version>-mac.zip` |
-| Windows  | `Shifted Setup <version>.exe`                           |
-| Linux    | `Shifted-<version>.AppImage`                            |
-
-The package is not signed. On macOS, the first start shows a warning. To open Shifted, right-click the app and click Open. On Windows, SmartScreen can show a warning. Click "More info", then "Run anyway". Signed installers are not part of version 1.
+- On macOS, the first start of a downloaded package shows a warning. Open System Settings, then Privacy & Security, and click "Open Anyway". If macOS says that the app is damaged, run `xattr -cr /Applications/Shifted.app` in Terminal, then open Shifted again.
+- On Windows, SmartScreen can show a warning. Click "More info", then "Run anyway".
+- On Linux, make the AppImage executable with `chmod +x`, then start it.
 
 ## How to sign in
 
@@ -105,5 +109,7 @@ To delete the data of Shifted:
 ## The spec
 
 Shifted is built from a spec: https://github.com/briandilley/shifted
+
+That repo holds no application code. It holds the product spec, the design, and a series of prompts. An AI coding agent ran `prompts/build-all.md` of that repo, one phase prompt after the other, to write this code. `docs/build-progress.md` lists each phase with its commit.
 
 The folder `docs/spec/` is a read-only copy of it. `docs/decisions.md` lists the choices that the build made where the spec is silent. `docs/spec-trace.md` connects each rule of the spec to its code and its test. `docs/manual-tests.md` is the list of manual tests.
