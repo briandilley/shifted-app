@@ -40,12 +40,7 @@ import {
   type ConfigStore,
   type MailtoConfig
 } from './config'
-import {
-  applyImport,
-  exportConfiguration,
-  previewImport,
-  type ExportedConfiguration
-} from './config-transfer'
+import { exportConfiguration, mergeImport, type ExportedConfiguration } from './config-transfer'
 import { Downloads } from './downloads'
 import { feedErrorText, readFeed, type FeedEntry, type FeedFetch, type FeedResult } from './feed'
 import { findProfilePhotoUrl, readInboxCount } from './gmail-page'
@@ -243,19 +238,23 @@ export class Accounts {
     return exportConfiguration(this.config, now)
   }
 
-  /** What an import of this exported configuration changes. */
+  /** What an import of this exported configuration changes. Nothing changes yet. */
   previewImport(imported: ExportedConfiguration): ImportPreview {
-    return previewImport(this.config, imported)
+    return {
+      exportedAt: imported.exportedAt || null,
+      changes: mergeImport(this.config, imported).changes
+    }
   }
 
   /**
-   * Import an exported configuration, with the rules of `previewImport`. Each new account
-   * gets a new ID and an empty session, and shows "Sign in to <address>." until it signs
-   * in. Shifted does not read its feed until then.
+   * Import an exported configuration: merge it with the rules of `mergeImport`, save the
+   * configuration once, then update the screens. Each new account gets a new ID and an
+   * empty session, and shows "Sign in to <address>." until it signs in. Shifted does not
+   * read its feed until then.
    */
   importConfiguration(imported: ExportedConfiguration): void {
     const before = this.config
-    this.config = applyImport(before, imported)
+    this.config = mergeImport(before, imported).config
     this.store.save(this.config)
     for (const account of this.config.accounts) {
       const old = before.accounts.find((candidate) => candidate.id === account.id)
@@ -268,13 +267,6 @@ export class Accounts {
         this.childWindows.setTitle(account.id, this.accountName(account.id))
       }
       if (old.unreadCountSource !== account.unreadCountSource) this.poller.readNow(account.id)
-    }
-    if (before.general.openAtLogin !== this.config.general.openAtLogin) {
-      try {
-        setOpenAtLogin(this.config.general.openAtLogin)
-      } catch (error) {
-        console.error('Shifted could not change "Open at login":', error)
-      }
     }
     this.addAccountFirst = false
     if (this.selectedAccountId === null) {

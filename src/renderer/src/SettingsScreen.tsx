@@ -617,8 +617,10 @@ function MoveToAnotherComputerField({ state }: { state: ShiftedState }): React.J
       </p>
       <p className={styles.note}>
         The exported configuration has your accounts with their nicknames, colors, and notification
-        values, and the values of this page. It never has sign-ins. On the other computer, you sign
-        in to each account again.{' '}
+        values, background loading, &quot;Ask where to save each file&quot;, and the always-use
+        account. It never has sign-ins or values that belong to this computer, such as open at
+        login. It has no password: keep it as you keep other personal files. On the other computer,
+        the import merges by address, and you sign in to each new account.{' '}
         {canEmail
           ? `Email it to myself opens a new message to ${selected.email} in Gmail. You click Send.`
           : 'To email it to yourself, select an account that is signed in, in the main window.'}

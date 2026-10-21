@@ -483,25 +483,12 @@ export interface ShiftedApi {
 export type ExportFileResult =
   { kind: 'saved'; fileName: string } | { kind: 'canceled' } | { kind: 'error'; message: string }
 
-/** One account in the preview of an import. */
-export interface ImportPreviewAccount {
-  email: string
-  nickname: string
-  color: string
-}
-
 /** What an import will change. The import window shows it before the person confirms. */
 export interface ImportPreview {
   /** When the configuration was exported, as an ISO 8601 time, or `null`. */
   exportedAt: string | null
-  /** The new accounts. Each one needs a sign-in after the import. */
-  addedAccounts: ImportPreviewAccount[]
-  /** The accounts on this computer with the same address, and what changes in each one. */
-  changedAccounts: (ImportPreviewAccount & { changes: string[] })[]
-  /** What changes on the General page, one line for each value. */
-  generalChanges: string[]
-  /** The accounts on this computer that the import does not change. They stay. */
-  unchangedAccounts: number
+  /** The list of changes, for example "Add 3 accounts: …". Empty when nothing changes. */
+  changes: string[]
 }
 
 /** What the import window shows after it reads a file or the pasted text. */

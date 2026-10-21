@@ -1,7 +1,6 @@
 import { deflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import {
-  applyImport,
   EMAIL_HELP,
   EMAIL_SUBJECT,
   emailLink,
@@ -9,10 +8,9 @@ import {
   EXPORTED_GENERAL_KEYS,
   exportConfiguration,
   exportFileName,
-  isEmptyImport,
   MAX_IMPORT_BYTES,
   NEWER_VERSION_MESSAGE,
-  previewImport,
+  mergeImport,
   readExportedConfiguration,
   TEXT_FORM_BEGIN,
   TEXT_FORM_END,
@@ -76,8 +74,11 @@ function sampleConfig(): Config {
 
 /** The values that move to another computer, without the IDs. */
 function movedValues(config: Config): unknown {
+  const always = config.accounts.find((item) => item.id === config.mailto.defaultAccountId)
   return {
-    general: config.general,
+    backgroundLoading: config.general.backgroundLoading,
+    askWhereToSave: config.general.askWhereToSave,
+    alwaysUseAccount: always?.email ?? null,
     accounts: [...config.accounts]
       .sort((a, b) => a.order - b.order)
       .map((item) => ({
@@ -124,8 +125,58 @@ describe('the export', () => {
           quietHours: { enabled: false, start: '22:00', end: '07:00', days: [] }
         }
       ],
-      general: { openAtLogin: true, backgroundLoading: 'calendars-only', askWhereToSave: true }
+      general: {
+        backgroundLoading: 'calendars-only',
+        askWhereToSave: true,
+        alwaysUseAccount: 'work@company.com'
+      }
     })
+  })
+
+  it('writes the accounts in the order of the sidebar', () => {
+    const config = sampleConfig()
+    const reversed: Config = {
+      ...config,
+      accounts: [
+        { ...(config.accounts[1] as AccountConfig), order: 0 },
+        { ...(config.accounts[0] as AccountConfig), order: 1 }
+      ].reverse()
+    }
+    expect(exportConfiguration(reversed, NOW).accounts.map((item) => item.email)).toEqual([
+      'work@company.com',
+      'alice@example.com'
+    ])
+  })
+
+  it('has no value that belongs to one computer', () => {
+    const exported = exportConfiguration(sampleConfig(), NOW)
+    const text = toFileForm(exported)
+    // Open at login, a remembered page permission, the snooze, the account used last for
+    // a mailto: link, the Google app used last, and the learned feed stay here.
+    for (const key of [
+      'openAtLogin',
+      'pagePermissions',
+      'media',
+      'snooze',
+      'lastAccountId',
+      'lastGoogleApp',
+      'automaticFeed',
+      'photo'
+    ]) {
+      expect(text).not.toContain(key)
+    }
+    expect(EXPORTED_GENERAL_KEYS).not.toContain('openAtLogin')
+
+    // A file with "openAtLogin" (from an older build) does not change it here.
+    const older = JSON.parse(text) as { general: Record<string, unknown> }
+    older.general['openAtLogin'] = true
+    const merged = mergeImport(emptyConfig(), readValid(JSON.stringify(older))).config
+    expect(merged.general.openAtLogin).toBe(false)
+  })
+
+  it('exports no "Always use this account" choice as null', () => {
+    const config = { ...sampleConfig(), mailto: { defaultAccountId: null, lastAccountId: null } }
+    expect(exportConfiguration(config, NOW).general.alwaysUseAccount).toBeNull()
   })
 
   it('has only the allowed keys, also when the configuration has more keys', () => {
@@ -156,10 +207,7 @@ describe('the export', () => {
     for (const word of ['secret', 'hunter2', 'SID=abc', 'xyz', 'extra', '1111', '2222']) {
       expect(text).not.toContain(word)
     }
-    // No ID, no page permissions, no learned feed, no snooze, no account picker choices.
-    for (const key of ['"id"', 'pagePermissions', 'automaticFeed', 'snooze', 'mailto']) {
-      expect(text).not.toContain(key)
-    }
+    for (const key of ['"id"', 'mailto']) expect(text).not.toContain(key)
   })
 
   it('writes the file form as JSON with an indent of 2 spaces', () => {
@@ -182,7 +230,7 @@ describe('export, then import', () => {
     const config = sampleConfig()
     for (const form of [toFileForm, toTextForm]) {
       const imported = readValid(form(exportConfiguration(config, NOW)))
-      const result = applyImport(emptyConfig(), imported)
+      const result = mergeImport(emptyConfig(), imported).config
       expect(movedValues(result)).toEqual(movedValues(config))
       const oldIds = config.accounts.map((item) => item.id)
       for (const item of result.accounts) {
@@ -193,69 +241,154 @@ describe('export, then import', () => {
         expect(item.automaticFeed).toBeNull()
       }
       expect(new Set(result.accounts.map((item) => item.id)).size).toBe(2)
+      // Open at login belongs to this computer, so it keeps its value here.
+      expect(result.general.openAtLogin).toBe(false)
       // The result is a valid configuration file.
       expect(parseConfig(JSON.parse(JSON.stringify(result)))).toEqual(result)
     }
   })
 
-  it('does not change the configuration that it gets', () => {
-    const before = emptyConfig()
-    applyImport(before, readValid(toFileForm(exportConfiguration(sampleConfig(), NOW))))
-    expect(before).toEqual(emptyConfig())
+  it('points the "Always use this account" choice to the right account after the import', () => {
+    const imported = readValid(toFileForm(exportConfiguration(sampleConfig(), NOW)))
+    const result = mergeImport(emptyConfig(), imported).config
+    const work = result.accounts.find((item) => item.email === 'work@company.com')
+    expect(work?.id).toBeDefined()
+    expect(work?.id).not.toBe('22222222-2222-4222-8222-222222222222')
+    expect(result.mailto.defaultAccountId).toBe(work?.id)
+    expect(result.mailto.lastAccountId).toBeNull()
+
+    // On a computer that has the account already, the choice points to its ID there.
+    const here: Config = {
+      ...emptyConfig(),
+      accounts: [account('77777777-7777-4777-8777-777777777777', 0, { email: 'WORK@company.com' })]
+    }
+    expect(mergeImport(here, imported).config.mailto.defaultAccountId).toBe(
+      '77777777-7777-4777-8777-777777777777'
+    )
+    // An import with no choice clears the choice here.
+    const none = readValid(
+      toFileForm(
+        exportConfiguration(
+          { ...sampleConfig(), mailto: { defaultAccountId: null, lastAccountId: null } },
+          NOW
+        )
+      )
+    )
+    const withChoice: Config = {
+      ...here,
+      mailto: { defaultAccountId: '77777777-7777-4777-8777-777777777777', lastAccountId: null }
+    }
+    expect(mergeImport(withChoice, none).config.mailto.defaultAccountId).toBeNull()
   })
 
-  it('changes an account with the same address and keeps its ID and its session', () => {
+  it('does not change the configuration that it gets', () => {
+    const before = emptyConfig()
+    mergeImport(before, readValid(toFileForm(exportConfiguration(sampleConfig(), NOW))))
+    expect(before).toEqual(emptyConfig())
+  })
+})
+
+describe('the merge', () => {
+  const ALICE_HERE = '33333333-3333-4333-8333-333333333333'
+  const STAYS = '44444444-4444-4444-8444-444444444444'
+  const imported = (): ExportedConfiguration =>
+    readValid(toFileForm(exportConfiguration(sampleConfig(), NOW)))
+
+  it('updates an account with the same address, also with other capital letters, and keeps its ID', () => {
     const here: Config = {
       ...emptyConfig(),
       accounts: [
-        account('33333333-3333-4333-8333-333333333333', 0, {
-          email: 'Alice@Example.com',
+        account(ALICE_HERE, 0, {
+          email: 'Alice@Example.COM',
           nickname: 'Old',
           pagePermissions: { media: 'deny' }
-        }),
-        account('44444444-4444-4444-8444-444444444444', 1, { email: 'stays@example.com' })
+        })
       ]
     }
-    const imported = readValid(toFileForm(exportConfiguration(sampleConfig(), NOW)))
-    const preview = previewImport(here, imported)
-    expect(preview.addedAccounts).toEqual([
-      { email: 'work@company.com', nickname: 'Work', color: '#188038' }
-    ])
-    expect(preview.changedAccounts).toHaveLength(1)
-    expect(preview.changedAccounts[0]?.email).toBe('Alice@Example.com')
-    expect(preview.changedAccounts[0]?.changes).toEqual([
-      'Nickname: Personal (now Old)',
-      'Color: Red (now Blue)',
-      'Unread count source: Important (now Automatic)',
-      'Calendar reminders notifications: off (now on)',
-      'Quiet hours: 18:00 to 09:00, all day on Sat, Sun (now off)'
-    ])
-    expect(preview.generalChanges).toEqual([
-      'Open at login: on (now off)',
-      'Background loading: Calendars only (now Everything)',
-      'Ask where to save each file: on (now off)'
-    ])
-    expect(preview.unchangedAccounts).toBe(1)
-
-    const result = applyImport(here, imported)
-    expect(result.accounts.map((item) => item.email)).toEqual([
-      'Alice@Example.com',
-      'stays@example.com',
-      'work@company.com'
-    ])
-    const alice = result.accounts[0]
+    const { config, changes } = mergeImport(here, imported())
+    const alice = config.accounts.find((item) => item.id === ALICE_HERE)
     expect(alice).toMatchObject({
-      id: '33333333-3333-4333-8333-333333333333',
+      email: 'Alice@Example.COM',
       nickname: 'Personal',
       color: '#D93025',
+      unreadCountSource: 'important',
       pagePermissions: { media: 'deny' }
     })
+    // It keeps its ID, so it keeps its session and needs no sign-in.
     expect(alice?.signInNeeded).toBeUndefined()
-    expect(result.accounts[1]).toEqual(here.accounts[1])
-    expect(result.accounts[2]).toMatchObject({ order: 2, signInNeeded: true })
+    expect(config.accounts).toHaveLength(2)
+    expect(changes).toEqual([
+      'Add 1 account: Work (work@company.com).',
+      'Update 1 account: Personal (Alice@Example.COM).',
+      'Replace the General values.'
+    ])
+  })
+
+  it('adds new addresses, keeps the other accounts at the end, and takes the order of the import', () => {
+    const here: Config = {
+      ...emptyConfig(),
+      accounts: [
+        account(STAYS, 0, { email: 'stays@example.com' }),
+        account(ALICE_HERE, 1, {
+          email: 'alice@example.com',
+          nickname: 'Personal',
+          color: '#D93025'
+        })
+      ]
+    }
+    const { config, changes } = mergeImport(here, imported())
+    expect(config.accounts.map((item) => [item.email, item.order])).toEqual([
+      ['alice@example.com', 0],
+      ['work@company.com', 1],
+      ['stays@example.com', 2]
+    ])
+    expect(config.accounts[0]?.id).toBe(ALICE_HERE)
+    expect(config.accounts[1]?.signInNeeded).toBe(true)
+    expect(config.accounts[2]?.id).toBe(STAYS)
+    expect(changes).toEqual([
+      'Add 1 account: Work (work@company.com).',
+      'Update 1 account: Personal (alice@example.com).',
+      'Put the accounts in the order of the import.',
+      'Keep 1 account that the import does not have, at the end of the sidebar: stays@example.com.',
+      'Replace the General values.'
+    ])
 
     // A second import of the same file changes nothing.
-    expect(isEmptyImport(previewImport(result, imported))).toBe(true)
+    expect(mergeImport(config, imported()).changes).toEqual([])
+  })
+
+  it('uses the first of two imported accounts with the same address', () => {
+    const exported = imported()
+    const twice: ExportedConfiguration = {
+      ...exported,
+      accounts: [
+        { ...exported.accounts[0], nickname: 'First' },
+        { ...exported.accounts[0], email: 'ALICE@example.com', nickname: 'Second' }
+      ]
+    }
+    // The file is not refused.
+    const read = readValid(toFileForm(twice))
+    const result = mergeImport(emptyConfig(), read).config
+    expect(result.accounts.map((item) => item.nickname)).toEqual(['First'])
+  })
+
+  it('never matches an account with no address, and keeps it', () => {
+    const NEW_HERE = '55555555-5555-4555-8555-555555555555'
+    const here: Config = {
+      ...emptyConfig(),
+      accounts: [account(NEW_HERE, 0, { email: '', nickname: '' })]
+    }
+    const exported = imported()
+    const withEmpty: ExportedConfiguration = {
+      ...exported,
+      accounts: [{ ...exported.accounts[0], email: '', nickname: 'No address' }]
+    }
+    const result = mergeImport(here, withEmpty).config
+    expect(result.accounts.map((item) => [item.id === NEW_HERE, item.nickname])).toEqual([
+      [false, 'No address'],
+      [true, '']
+    ])
+    expect(result.accounts[0]?.signInNeeded).toBe(true)
   })
 })
 
@@ -406,7 +539,7 @@ describe('the import', () => {
       (value) => (value['general'] = []),
       (value) => (value['exportedAt'] = 5),
       (value) => ((value['general'] as Record<string, unknown>)['backgroundLoading'] = 'all'),
-      (value) => ((value['general'] as Record<string, unknown>)['openAtLogin'] = 'yes'),
+      (value) => ((value['general'] as Record<string, unknown>)['askWhereToSave'] = 'yes'),
       (value) => ((value['accounts'] as unknown[])[0] = 'alice@example.com'),
       (value) => (firstAccount(value)['email'] = 'not an address'),
       (value) => (firstAccount(value)['email'] = 42),
@@ -428,12 +561,8 @@ describe('the import', () => {
           end: '07:00',
           days: [7]
         }),
-      // Two accounts with the same address.
-      (value) => {
-        const accounts = value['accounts'] as Record<string, unknown>[]
-        const second = accounts[1]
-        if (second) second['email'] = 'ALICE@example.com'
-      }
+      (value) => ((value['general'] as Record<string, unknown>)['alwaysUseAccount'] = 'nobody'),
+      (value) => ((value['general'] as Record<string, unknown>)['alwaysUseAccount'] = 7)
     ]
     for (const change of wrong) expectRefused(changed(change))
   })
@@ -455,7 +584,7 @@ describe('the import', () => {
     const imported = readValid(text)
     expect(imported.accounts[0]).toEqual(exported.accounts[0])
     expect(imported.general).toEqual({})
-    const result = applyImport(emptyConfig(), imported)
+    const result = mergeImport(emptyConfig(), imported).config
     expect(result.general).toEqual(emptyConfig().general)
     expect(result.accounts[0]?.id).not.toBe('11111111-1111-4111-8111-111111111111')
     expect(result.accounts[0]?.pagePermissions).toEqual({})

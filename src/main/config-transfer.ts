@@ -5,26 +5,21 @@
  * - `exportConfiguration` turns the configuration into an exported configuration.
  * - `toFileForm` and `toTextForm` write its two forms.
  * - `readExportedConfiguration` reads either form back, and checks every value.
- * - `previewImport` says what an import will change, and `applyImport` makes the change.
+ * - `mergeImport` merges an import with the configuration on this computer, and lists the
+ *   changes.
  *
  * This module needs no Electron, so that unit tests can use it.
  */
 import { deflateRawSync, inflateRawSync } from 'node:zlib'
 import {
-  accountColorName,
-  BACKGROUND_LOADING_NAMES,
   defaultNotificationSwitches,
   findAccountColor,
   isBackgroundLoading,
   MAX_NICKNAME_LENGTH,
-  NOTIFICATION_KIND_NAMES,
   NOTIFICATION_KINDS,
   parseQuietHours,
-  UNREAD_COUNT_SOURCE_NAMES,
   isUnreadCountSource,
-  WEEKDAYS,
   type BackgroundLoading,
-  type ImportPreview,
   type NotificationSwitches,
   type QuietHours,
   type UnreadCountSource
@@ -113,22 +108,37 @@ function readNotificationSwitches(value: unknown): NotificationSwitches | undefi
 
 const readQuietHours: Reader<QuietHours> = parseQuietHours
 
+/** The address of the "Always use this account" choice, or `null` when there is no choice. */
+function readAlwaysUseAccount(value: unknown): string | null | undefined {
+  if (value === null) return null
+  const address = readAddress(value)
+  return address ? address : undefined
+}
+
 /**
- * The values of the General page that an exported configuration has. This table and
- * `ACCOUNT_FIELDS` are the only lists of allowed keys: the export copies only these keys,
- * and the import reads only these keys.
+ * The values of the General page that an exported configuration has, as "Move to another
+ * computer" in `PRODUCT.md` lists them. This table and `ACCOUNT_FIELDS` are the only lists
+ * of allowed keys: the export copies only these keys, and the import reads only these keys.
  *
- * Not exported: the sign-ins (cookies and sessions), the account IDs, the saved page
- * permissions, the feed that "Automatic" learned, the Google app used last, the snooze,
- * and the choices of the account picker.
+ * `alwaysUseAccount` is the "Always use this account" choice of the account picker. The
+ * configuration keeps it as an account ID. The export has the address of that account,
+ * and the import turns the address back into the new ID.
+ *
+ * Not exported, because they belong to one computer: open at login, the default email
+ * app, and the size and position of the window. Also not exported: the sign-ins (cookies
+ * and sessions), the account IDs, the remembered answers for page permissions, the snooze,
+ * the profile photos, the feed that "Automatic" learned, and the Google app used last.
  */
 const GENERAL_FIELDS = {
-  openAtLogin: readBoolean,
   backgroundLoading: readBackgroundLoading,
-  askWhereToSave: readBoolean
+  askWhereToSave: readBoolean,
+  alwaysUseAccount: readAlwaysUseAccount
 } as const
 
-/** The values of each account that an exported configuration has. See `GENERAL_FIELDS`. */
+/**
+ * The values of each account that an exported configuration has. See `GENERAL_FIELDS`.
+ * The place in the sidebar is the place in the `accounts` list.
+ */
 const ACCOUNT_FIELDS = {
   email: readAddress,
   nickname: readNickname,
@@ -203,8 +213,13 @@ function exportTime(now: Date): string {
  * keys. The account IDs are not exported.
  */
 export function exportConfiguration(config: Config, now = new Date()): ExportedConfiguration {
-  const general = isRecord(config.general) ? config.general : {}
+  // The accounts in the order of the sidebar.
   const accounts = [...config.accounts].sort((a, b) => a.order - b.order)
+  const always = accounts.find((account) => account.id === config.mailto.defaultAccountId)
+  const general: Record<string, unknown> = {
+    ...(isRecord(config.general) ? config.general : {}),
+    alwaysUseAccount: always?.email || null
+  }
   return {
     format: EXPORT_FORMAT,
     version: EXPORT_VERSION,
@@ -213,7 +228,7 @@ export function exportConfiguration(config: Config, now = new Date()): ExportedC
       (account) =>
         readFields(ACCOUNT_FIELDS, account as unknown as Record<string, unknown>, 'skip') ?? {}
     ),
-    general: readFields(GENERAL_FIELDS, general as Record<string, unknown>, 'skip') ?? {}
+    general: readFields(GENERAL_FIELDS, general, 'skip') ?? {}
   }
 }
 
@@ -308,17 +323,10 @@ function checkConfiguration(value: unknown): ReadResult {
   const rawAccounts = value['accounts'] ?? []
   if (!Array.isArray(rawAccounts)) return unreadable
   const accounts: ExportedAccount[] = []
-  const addresses = new Set<string>()
   for (const raw of rawAccounts) {
     if (!isRecord(raw)) return unreadable
     const account = readFields(ACCOUNT_FIELDS, raw, 'fail')
     if (!account) return unreadable
-    // Two accounts with the same address cannot both be on one computer.
-    const address = account.email?.toLowerCase()
-    if (address) {
-      if (addresses.has(address)) return unreadable
-      addresses.add(address)
-    }
     accounts.push(account)
   }
   return {
@@ -362,183 +370,30 @@ export function readExportedConfiguration(input: string | Uint8Array): ReadResul
   return checkConfiguration(value)
 }
 
-/** The account on this computer with the same address, if the address is not empty. */
-function findSameAddress(
-  accounts: readonly AccountConfig[],
-  address: string | undefined
-): AccountConfig | undefined {
-  if (!address) return undefined
-  const wanted = address.toLowerCase()
-  return accounts.find((account) => account.email.toLowerCase() === wanted)
+/** The result of a merge: the new configuration, and the list of changes for the person. */
+export interface MergeResult {
+  config: Config
+  /** One line for each kind of change, for example "Add 3 accounts: …". Empty when nothing changes. */
+  changes: string[]
 }
 
-function onOff(value: boolean): string {
-  return value ? 'on' : 'off'
+/** An address for comparing: no difference between capital and small letters. */
+function addressKey(address: string | undefined): string {
+  return (address ?? '').trim().toLowerCase()
 }
 
-function quietHoursText(quietHours: QuietHours): string {
-  if (!quietHours.enabled) return 'off'
-  const parts = [
-    quietHours.start === quietHours.end ? 'on' : `${quietHours.start} to ${quietHours.end}`
-  ]
-  const days = WEEKDAYS.filter(({ day }) => quietHours.days.includes(day)).map(({ short }) => short)
-  if (days.length > 0) parts.push(`all day on ${days.join(', ')}`)
-  return parts.join(', ')
+/** The name of an account in the list of changes: the nickname and the address. */
+function changeName(account: AccountConfig): string {
+  if (account.nickname && account.email) return `${account.nickname} (${account.email})`
+  return account.email || account.nickname || 'an account with no address'
 }
 
-function sameQuietHours(a: QuietHours, b: QuietHours): boolean {
-  return (
-    a.enabled === b.enabled &&
-    a.start === b.start &&
-    a.end === b.end &&
-    a.days.join() === b.days.join()
-  )
+/** "1 account" or "3 accounts". */
+function accountCount(count: number): string {
+  return count === 1 ? '1 account' : `${count} accounts`
 }
 
-/** One line of the preview: the new value, and the value on this computer now. */
-function changeLine(label: string, next: string, now: string): string {
-  return `${label}: ${next} (now ${now})`
-}
-
-/** What changes in an account on this computer with the same address. */
-function accountChanges(account: AccountConfig, imported: ExportedAccount): string[] {
-  const changes: string[] = []
-  if (imported.nickname !== undefined && imported.nickname !== account.nickname) {
-    changes.push(
-      changeLine('Nickname', imported.nickname || 'no nickname', account.nickname || 'no nickname')
-    )
-  }
-  if (
-    imported.color !== undefined &&
-    imported.color.toLowerCase() !== account.color.toLowerCase()
-  ) {
-    changes.push(
-      changeLine('Color', accountColorName(imported.color), accountColorName(account.color))
-    )
-  }
-  if (
-    imported.unreadCountSource !== undefined &&
-    imported.unreadCountSource !== account.unreadCountSource
-  ) {
-    changes.push(
-      changeLine(
-        'Unread count source',
-        UNREAD_COUNT_SOURCE_NAMES[imported.unreadCountSource],
-        UNREAD_COUNT_SOURCE_NAMES[account.unreadCountSource]
-      )
-    )
-  }
-  if (imported.notifications) {
-    for (const kind of NOTIFICATION_KINDS) {
-      const next = imported.notifications[kind]
-      if (next !== account.notifications[kind]) {
-        changes.push(
-          changeLine(
-            `${NOTIFICATION_KIND_NAMES[kind]} notifications`,
-            onOff(next),
-            onOff(account.notifications[kind])
-          )
-        )
-      }
-    }
-  }
-  if (imported.quietHours && !sameQuietHours(imported.quietHours, account.quietHours)) {
-    changes.push(
-      changeLine(
-        'Quiet hours',
-        quietHoursText(imported.quietHours),
-        quietHoursText(account.quietHours)
-      )
-    )
-  }
-  return changes
-}
-
-/** What changes on the General page. */
-function generalChanges(config: Config, imported: ExportedGeneral): string[] {
-  const now = config.general
-  const changes: string[] = []
-  if (imported.openAtLogin !== undefined && imported.openAtLogin !== now.openAtLogin) {
-    changes.push(changeLine('Open at login', onOff(imported.openAtLogin), onOff(now.openAtLogin)))
-  }
-  if (
-    imported.backgroundLoading !== undefined &&
-    imported.backgroundLoading !== now.backgroundLoading
-  ) {
-    changes.push(
-      changeLine(
-        'Background loading',
-        BACKGROUND_LOADING_NAMES[imported.backgroundLoading],
-        BACKGROUND_LOADING_NAMES[now.backgroundLoading]
-      )
-    )
-  }
-  if (imported.askWhereToSave !== undefined && imported.askWhereToSave !== now.askWhereToSave) {
-    changes.push(
-      changeLine(
-        'Ask where to save each file',
-        onOff(imported.askWhereToSave),
-        onOff(now.askWhereToSave)
-      )
-    )
-  }
-  return changes
-}
-
-/**
- * What an import changes on this computer:
- *
- * - An account with an address that no account here has is added, with a new ID and an
- *   empty session. It needs a sign-in.
- * - An account with the same address as an account here (case does not matter) changes
- *   the values of that account. Its session stays, so it stays signed in.
- * - The accounts here that the configuration does not have stay as they are. An import
- *   never removes an account.
- * - The General values of the configuration replace the values here.
- */
-export function previewImport(config: Config, imported: ExportedConfiguration): ImportPreview {
-  const preview: ImportPreview = {
-    exportedAt: imported.exportedAt || null,
-    addedAccounts: [],
-    changedAccounts: [],
-    generalChanges: generalChanges(config, imported.general),
-    unchangedAccounts: 0
-  }
-  const changed = new Set<string>()
-  const added: AccountConfig[] = []
-  for (const account of imported.accounts) {
-    const same = findSameAddress(config.accounts, account.email)
-    if (same) {
-      const changes = accountChanges(same, account)
-      if (changes.length > 0 && !changed.has(same.id)) {
-        changed.add(same.id)
-        preview.changedAccounts.push({
-          email: same.email,
-          nickname: account.nickname ?? same.nickname,
-          color: account.color ?? same.color,
-          changes
-        })
-      }
-      continue
-    }
-    const fresh = newImportedAccount([...config.accounts, ...added], account)
-    added.push(fresh)
-    preview.addedAccounts.push({ email: fresh.email, nickname: fresh.nickname, color: fresh.color })
-  }
-  preview.unchangedAccounts = config.accounts.length - changed.size
-  return preview
-}
-
-/** True when the import changes nothing. */
-export function isEmptyImport(preview: ImportPreview): boolean {
-  return (
-    preview.addedAccounts.length === 0 &&
-    preview.changedAccounts.length === 0 &&
-    preview.generalChanges.length === 0
-  )
-}
-
-/** A new account from an exported account: a new ID, the next order, and no sign-in yet. */
+/** A new account from an exported account: a new ID, the next color, and no sign-in yet. */
 function newImportedAccount(
   existing: readonly AccountConfig[],
   imported: ExportedAccount
@@ -558,7 +413,7 @@ function newImportedAccount(
   }
 }
 
-/** The values of an account here, changed by the account with the same address. */
+/** The values of an account on this computer, updated by the imported account with its address. */
 function updatedAccount(account: AccountConfig, imported: ExportedAccount): AccountConfig {
   const unreadCountSource = imported.unreadCountSource ?? account.unreadCountSource
   return {
@@ -578,27 +433,116 @@ function updatedAccount(account: AccountConfig, imported: ExportedAccount): Acco
   }
 }
 
+/** True when the import changes a value of the account. */
+function accountValuesChanged(before: AccountConfig, after: AccountConfig): boolean {
+  const values = (account: AccountConfig): string =>
+    JSON.stringify([
+      account.nickname,
+      account.color.toLowerCase(),
+      account.unreadCountSource,
+      NOTIFICATION_KINDS.map((kind) => account.notifications[kind]),
+      account.quietHours
+    ])
+  return values(before) !== values(after)
+}
+
 /**
- * Apply an import to the configuration, with the rules of `previewImport`. The new
- * accounts come after the accounts here, in the order of the exported configuration.
+ * Merge an import with the configuration on this computer, with the rules of "Move to
+ * another computer" in `PRODUCT.md`:
  *
- * @returns The new configuration. The configuration that it gets does not change.
+ * - The accounts match by address, with no difference between capital and small letters.
+ *   If the import has the same address twice, the first one counts. An account here with
+ *   no address yet (for example during its first sign-in) never matches.
+ * - An imported account with the address of an account here updates the values of that
+ *   account. The account keeps its ID, so it keeps its session and its sign-in.
+ * - An imported account with a new address is added, with a new ID and an empty session.
+ *   It waits for sign-in.
+ * - The sidebar takes the order of the import. An account here that the import does not
+ *   have stays, at the end of the sidebar, in its old order.
+ * - The General values of the import replace the General values here. The "Always use this
+ *   account" address becomes the ID of the account with that address.
+ *
+ * This function needs no Electron and changes nothing. It returns the new configuration
+ * and the list of changes that the import window shows before the person confirms.
  */
-export function applyImport(config: Config, imported: ExportedConfiguration): Config {
-  let accounts = config.accounts.map((account) => ({ ...account }))
+export function mergeImport(config: Config, imported: ExportedConfiguration): MergeResult {
+  const local = [...config.accounts].sort((a, b) => a.order - b.order)
+  const matched = new Set<string>()
+  const seen = new Set<string>()
+  const merged: AccountConfig[] = []
+  const added: AccountConfig[] = []
+  const updated: AccountConfig[] = []
+
   for (const account of imported.accounts) {
-    const same = findSameAddress(accounts, account.email)
+    const key = addressKey(account.email)
+    if (key !== '') {
+      // The first imported account with an address counts.
+      if (seen.has(key)) continue
+      seen.add(key)
+    }
+    const same =
+      key === ''
+        ? undefined
+        : local.find(
+            (candidate) =>
+              !matched.has(candidate.id) &&
+              candidate.email !== '' &&
+              addressKey(candidate.email) === key
+          )
     if (same) {
-      accounts = accounts.map((candidate) =>
-        candidate.id === same.id ? updatedAccount(candidate, account) : candidate
-      )
+      matched.add(same.id)
+      const next = updatedAccount(same, account)
+      if (accountValuesChanged(same, next)) updated.push(next)
+      merged.push(next)
     } else {
-      accounts = [...accounts, newImportedAccount(accounts, account)]
+      const fresh = newImportedAccount([...local, ...added], account)
+      added.push(fresh)
+      merged.push(fresh)
     }
   }
-  return {
-    ...config,
-    general: { ...config.general, ...imported.general },
-    accounts
+  const kept = local.filter((account) => !matched.has(account.id))
+  const accounts = [...merged, ...kept].map((account, order) => ({ ...account, order }))
+
+  // The General values of the import replace the values here.
+  const general = { ...config.general }
+  if (imported.general.backgroundLoading !== undefined) {
+    general.backgroundLoading = imported.general.backgroundLoading
   }
+  if (imported.general.askWhereToSave !== undefined) {
+    general.askWhereToSave = imported.general.askWhereToSave
+  }
+  const mailto = { ...config.mailto }
+  if (imported.general.alwaysUseAccount !== undefined) {
+    const key = addressKey(imported.general.alwaysUseAccount ?? '')
+    const always =
+      key === '' ? undefined : accounts.find((account) => addressKey(account.email) === key)
+    mailto.defaultAccountId = always?.id ?? null
+  }
+
+  const changes: string[] = []
+  if (added.length > 0) {
+    changes.push(`Add ${accountCount(added.length)}: ${added.map(changeName).join(', ')}.`)
+  }
+  if (updated.length > 0) {
+    changes.push(`Update ${accountCount(updated.length)}: ${updated.map(changeName).join(', ')}.`)
+  }
+  const localOrder = local.map((account) => account.id)
+  const newOrder = accounts.map((account) => account.id).filter((id) => localOrder.includes(id))
+  if (newOrder.join() !== localOrder.join()) {
+    changes.push('Put the accounts in the order of the import.')
+    if (kept.length > 0) {
+      changes.push(
+        `Keep ${accountCount(kept.length)} that the import does not have, at the end of the sidebar: ${kept.map(changeName).join(', ')}.`
+      )
+    }
+  }
+  if (
+    general.backgroundLoading !== config.general.backgroundLoading ||
+    general.askWhereToSave !== config.general.askWhereToSave ||
+    mailto.defaultAccountId !== config.mailto.defaultAccountId
+  ) {
+    changes.push('Replace the General values.')
+  }
+
+  return { config: { ...config, general, accounts, mailto }, changes }
 }

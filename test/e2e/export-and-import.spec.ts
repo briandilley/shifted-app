@@ -33,6 +33,24 @@ import {
 
 const ONE = 'one@example.com'
 const TWO = 'two@example.com'
+const THREE = 'three@example.com'
+
+/** An exported file with these accounts, in this order, in a new temporary folder. */
+function writeExportedFile(
+  folder: string,
+  values: { email: string; nickname: string; color: string }[]
+): string {
+  const accounts: AccountConfig[] = []
+  for (const value of values) accounts.push({ ...newAccount(accounts), ...value })
+  const other: Config = {
+    ...emptyConfig(),
+    general: { askWhereToSave: true, backgroundLoading: 'everything', openAtLogin: false },
+    accounts
+  }
+  const filePath = join(folder, 'Shifted configuration 2026-10-21.json')
+  writeFileSync(filePath, toFileForm(exportConfiguration(other)))
+  return filePath
+}
 
 /** A temporary folder for the files of one test. Tests never write to the Documents folder. */
 function temporaryFolder(): string {
@@ -181,18 +199,12 @@ test.describe('import into an empty user data folder', () => {
     userDataDir
   }) => {
     // The file that another computer exported.
-    const accounts: AccountConfig[] = []
-    accounts.push({ ...newAccount(accounts), email: ONE, nickname: 'Personal', color: '#D93025' })
-    accounts.push({ ...newAccount(accounts), email: TWO, nickname: 'Work', color: '#A142F4' })
-    const other: Config = {
-      ...emptyConfig(),
-      general: { askWhereToSave: true, backgroundLoading: 'everything', openAtLogin: false },
-      accounts
-    }
     const folder = temporaryFolder()
     try {
-      const filePath = join(folder, 'Shifted configuration 2026-10-21.json')
-      writeFileSync(filePath, toFileForm(exportConfiguration(other)))
+      const filePath = writeExportedFile(folder, [
+        { email: ONE, nickname: 'Personal', color: '#D93025' },
+        { email: TWO, nickname: 'Work', color: '#A142F4' }
+      ])
 
       // With no accounts, "Import configuration…" is next to "Add account".
       await expect(sidebar(mainWindow).getByRole('button', { name: 'Add account' })).toBeVisible()
@@ -211,10 +223,10 @@ test.describe('import into an empty user data folder', () => {
       await answerOpenDialog(shifted, filePath)
       await importWindow.getByRole('button', { name: 'Choose file…' }).click()
       const preview = importWindow.locator('[data-import-preview]')
-      await expect(preview.getByRole('heading', { name: 'New accounts' })).toBeVisible()
-      await expect(preview.getByText('Personal')).toBeVisible()
-      await expect(preview.getByText('Work')).toBeVisible()
-      await expect(preview.getByText('Ask where to save each file: on (now off)')).toBeVisible()
+      await expect(preview.getByRole('list', { name: 'Changes' }).getByRole('listitem')).toHaveText(
+        [`Add 2 accounts: Personal (${ONE}), Work (${TWO}).`, 'Replace the General values.']
+      )
+      await expect(importWindow.getByRole('button', { name: 'Cancel' })).toBeVisible()
       expect(savedAccounts(userDataDir)).toEqual([])
 
       await importWindow.getByRole('button', { name: 'Import' }).click()
@@ -238,7 +250,6 @@ test.describe('import into an empty user data folder', () => {
 
       // New IDs, no sessions yet, and the General values of the file.
       const config = readConfig(userDataDir)
-      expect(config.accounts.map((account) => account.id)).not.toContain(accounts[0]?.id)
       expect(config.accounts.map((account) => account.signInNeeded)).toEqual([true, true])
       expect(config.general.askWhereToSave).toBe(true)
 
@@ -275,4 +286,66 @@ test.describe('import into an empty user data folder', () => {
       rmSync(folder, { recursive: true, force: true })
     }
   })
+})
+
+test('an import keeps a signed-in account with the same address, and adds the new accounts', async ({
+  shifted,
+  mainWindow,
+  fakeGoogle,
+  userDataDir
+}) => {
+  await addAccountAndSignIn(shifted, mainWindow, fakeGoogle, ONE)
+  const signedInId = readConfig(userDataDir).accounts[0]?.id
+
+  const folder = temporaryFolder()
+  try {
+    // The file has the signed-in account (with other capital letters) and two more.
+    const filePath = writeExportedFile(folder, [
+      { email: TWO, nickname: 'Work', color: '#A142F4' },
+      { email: 'One@Example.com', nickname: 'Personal', color: '#188038' },
+      { email: THREE, nickname: 'Club', color: '#F9AB00' }
+    ])
+    await openSettingsFromAppMenu(shifted)
+    const settings = await settingsWindowPage(shifted)
+    await settings.getByRole('button', { name: 'Import configuration…' }).click()
+    const importWindow = await importWindowPage(shifted)
+    await answerOpenDialog(shifted, filePath)
+    await importWindow.getByRole('button', { name: 'Choose file…' }).click()
+    await expect(
+      importWindow.getByRole('list', { name: 'Changes' }).getByRole('listitem')
+    ).toHaveText([
+      `Add 2 accounts: Work (${TWO}), Club (${THREE}).`,
+      `Update 1 account: Personal (${ONE}).`,
+      'Replace the General values.'
+    ])
+    await importWindow.getByRole('button', { name: 'Import' }).click()
+    await expect.poll(() => windowCount(shifted)).toBe(2)
+
+    // The sidebar takes the order of the import.
+    await expect
+      .poll(() => sidebarAccountNames(mainWindow))
+      .toEqual([`Work, ${TWO}`, `Personal, ${ONE}`, `Club, ${THREE}`])
+    const config = readConfig(userDataDir)
+    expect(config.accounts.find((account) => account.email === ONE)).toMatchObject({
+      id: signedInId,
+      nickname: 'Personal',
+      color: '#188038'
+    })
+    expect(config.accounts.find((account) => account.email === ONE)?.signInNeeded).toBeUndefined()
+
+    // The signed-in account keeps its fake Gmail.
+    await sidebarAccount(mainWindow, 'Personal').click()
+    await expect
+      .poll(() => visibleGoogleApp(shifted))
+      .toMatchObject({ url: `${fakeGoogle.url}/gmail/`, address: ONE })
+
+    // The two new accounts show the Sign in panel.
+    await sidebarAccount(mainWindow, 'Work').click()
+    await expect(mainWindow.getByText(`Sign in to ${TWO}.`)).toBeVisible()
+    await sidebarAccount(mainWindow, 'Club').click()
+    await expect(mainWindow.getByText(`Sign in to ${THREE}.`)).toBeVisible()
+    await expect(mainWindow.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible()
+  } finally {
+    rmSync(folder, { recursive: true, force: true })
+  }
 })

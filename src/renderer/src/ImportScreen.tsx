@@ -1,13 +1,12 @@
-import { useEffect, useState, type CSSProperties } from 'react'
-import type { ImportPreview, ImportPreviewAccount, ImportReadResult } from '../../shared/api'
-import { textColorOn } from './account-display'
+import { useEffect, useState } from 'react'
+import type { ImportPreview, ImportReadResult } from '../../shared/api'
 import controls from './controls.module.css'
 import styles from './ImportScreen.module.css'
 
-/** What the import window shows: the file and the text box, or what will change. */
+/** What the import window shows: the file and the text box, or the list of changes. */
 type Step = { kind: 'input'; error: string | null } | { kind: 'preview'; preview: ImportPreview }
 
-/** The date of the export, for example "21 October 2026", or `null`. */
+/** The date of the export, for example "October 21, 2026", or `null`. */
 function exportDate(value: string | null): string | null {
   if (!value) return null
   const date = new Date(value)
@@ -15,107 +14,33 @@ function exportDate(value: string | null): string | null {
   return date.toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-/** One account of the preview: a circle in the account color, the name, and the address. */
-function PreviewAccountName({ account }: { account: ImportPreviewAccount }): React.JSX.Element {
-  const letter = (Array.from((account.email || account.nickname).trim())[0] ?? '').toUpperCase()
-  return (
-    <span className={styles.account}>
-      <span
-        className={styles.avatar}
-        style={
-          {
-            '--account-color': account.color,
-            color: textColorOn(account.color)
-          } as CSSProperties
-        }
-        aria-hidden="true"
-      >
-        {letter}
-      </span>
-      <span className={styles.names}>
-        <span className={styles.name}>{account.nickname || account.email || 'New account'}</span>
-        {account.nickname && account.email && (
-          <span className={styles.address}>{account.email}</span>
-        )}
-      </span>
-    </span>
-  )
-}
-
-/** What the import will change, before the person confirms. */
-function PreviewList({ preview }: { preview: ImportPreview }): React.JSX.Element {
+/** The list of changes that the import makes, before the person confirms. */
+function ChangeList({ preview }: { preview: ImportPreview }): React.JSX.Element {
   const date = exportDate(preview.exportedAt)
-  const empty =
-    preview.addedAccounts.length === 0 &&
-    preview.changedAccounts.length === 0 &&
-    preview.generalChanges.length === 0
   return (
     <div className={styles.preview} data-import-preview>
       {date && <p className={styles.note}>Exported on {date}.</p>}
-      {empty && <p>This configuration changes nothing on this computer.</p>}
-      {preview.addedAccounts.length > 0 && (
-        <section aria-labelledby="added-accounts">
-          <h2 id="added-accounts" className={styles.sectionTitle}>
-            New accounts
-          </h2>
-          <ul className={styles.list}>
-            {preview.addedAccounts.map((account, index) => (
-              <li key={`${account.email}-${index}`}>
-                <PreviewAccountName account={account} />
-              </li>
-            ))}
-          </ul>
-          <p className={styles.note}>
-            Sign-ins never move. After the import, each new account shows a Sign in button.
-          </p>
-        </section>
+      {preview.changes.length === 0 ? (
+        <p>This configuration changes nothing on this computer.</p>
+      ) : (
+        <ul className={styles.changes} aria-label="Changes">
+          {preview.changes.map((change) => (
+            <li key={change}>{change}</li>
+          ))}
+        </ul>
       )}
-      {preview.changedAccounts.length > 0 && (
-        <section aria-labelledby="changed-accounts">
-          <h2 id="changed-accounts" className={styles.sectionTitle}>
-            Changed accounts
-          </h2>
-          <ul className={styles.list}>
-            {preview.changedAccounts.map((account) => (
-              <li key={account.email}>
-                <PreviewAccountName account={account} />
-                <ul className={styles.changes}>
-                  {account.changes.map((change) => (
-                    <li key={change}>{change}</li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {preview.generalChanges.length > 0 && (
-        <section aria-labelledby="general-changes">
-          <h2 id="general-changes" className={styles.sectionTitle}>
-            General
-          </h2>
-          <ul className={styles.changes}>
-            {preview.generalChanges.map((change) => (
-              <li key={change}>{change}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {preview.unchangedAccounts > 0 && (
-        <p className={styles.note}>
-          {preview.unchangedAccounts === 1
-            ? '1 account on this computer stays as it is.'
-            : `${preview.unchangedAccounts} accounts on this computer stay as they are.`}
-        </p>
-      )}
+      <p className={styles.note}>
+        Accounts on this computer keep their sign-ins. Each new account shows a Sign in button after
+        the import.
+      </p>
     </div>
   )
 }
 
 /**
  * The import window: choose the exported file, or paste the message of "Email it to
- * myself". Then it shows what will change, and the import starts only after a click on
- * Import. Escape closes the window and changes nothing.
+ * myself". Then it shows the list of changes, and the import starts only after a click
+ * on Import. Cancel and Escape close the window and change nothing.
  */
 function ImportScreen(): React.JSX.Element {
   const [text, setText] = useState('')
@@ -146,11 +71,17 @@ function ImportScreen(): React.JSX.Element {
       .finally(() => setBusy(false))
   }
 
+  const cancel = (
+    <button
+      type="button"
+      className={controls.secondaryButton}
+      onClick={() => window.shifted.cancelImport()}
+    >
+      Cancel
+    </button>
+  )
+
   if (step.kind === 'preview') {
-    const empty =
-      step.preview.addedAccounts.length === 0 &&
-      step.preview.changedAccounts.length === 0 &&
-      step.preview.generalChanges.length === 0
     return (
       <div className={styles.window}>
         <header className={styles.header}>
@@ -158,20 +89,14 @@ function ImportScreen(): React.JSX.Element {
           <p className={styles.note}>Check what will change. Nothing changes until you import.</p>
         </header>
         <div className={styles.card}>
-          <PreviewList preview={step.preview} />
+          <ChangeList preview={step.preview} />
         </div>
         <footer className={styles.footer}>
-          <button
-            type="button"
-            className={controls.secondaryButton}
-            onClick={() => setStep({ kind: 'input', error: null })}
-          >
-            Back
-          </button>
+          {cancel}
           <button
             type="button"
             className={controls.primaryButton}
-            disabled={empty}
+            disabled={step.preview.changes.length === 0}
             onClick={() => window.shifted.confirmImport()}
           >
             Import
@@ -220,13 +145,7 @@ function ImportScreen(): React.JSX.Element {
         </div>
       </div>
       <footer className={styles.footer}>
-        <button
-          type="button"
-          className={controls.secondaryButton}
-          onClick={() => window.shifted.cancelImport()}
-        >
-          Cancel
-        </button>
+        {cancel}
         <button
           type="button"
           className={controls.primaryButton}
