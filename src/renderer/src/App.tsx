@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { AccountState } from '../../shared/api'
+import { MAIN, PAGE_PROBLEM_TEXTS } from '../strings'
 import { accountName } from './account-display'
 import styles from './App.module.css'
 import controls from './controls.module.css'
@@ -23,23 +24,23 @@ function ContentPanel({ account, addAccountFirst }: ContentPanelProps): React.JS
   if (!account) {
     return (
       <p className={styles.message} role={addAccountFirst ? 'alert' : undefined}>
-        {addAccountFirst ? 'Add an account first' : 'No accounts yet'}
+        {addAccountFirst ? MAIN.addAccountFirst : MAIN.noAccounts}
       </p>
     )
   }
   switch (account.status) {
     case 'signing-in':
-      return <p className={styles.message}>Signing in…</p>
+      return <p className={styles.message}>{MAIN.signingIn}</p>
     case 'signed-out':
       return (
         <div className={styles.panel}>
-          <p className={styles.message}>This account is signed out.</p>
+          <p className={styles.message}>{MAIN.signedOut}</p>
           <button
             type="button"
             className={controls.primaryButton}
             onClick={() => window.shifted.signInAgain(account.id)}
           >
-            Sign in again
+            {MAIN.signInAgain}
           </button>
         </div>
       )
@@ -48,20 +49,40 @@ function ContentPanel({ account, addAccountFirst }: ContentPanelProps): React.JS
       return (
         <div className={styles.panel}>
           <p className={styles.message}>
-            {account.email ? `Sign in to ${account.email}.` : 'Sign in to this account.'}
+            {account.email ? MAIN.signInTo(account.email) : MAIN.signInToThisAccount}
           </p>
           <button
             type="button"
             className={controls.primaryButton}
             onClick={() => window.shifted.signInAgain(account.id)}
           >
-            Sign in
+            {MAIN.signIn}
           </button>
         </div>
       )
-    case 'signed-in':
+    case 'signed-in': {
+      // The page of the Google app stopped: it crashed, or it has a certificate error.
+      // Shifted hides its view, and "Reload" loads it again.
+      const problem = account.pageProblems[account.lastGoogleApp]
+      if (problem) {
+        return (
+          <div className={styles.panel} data-page-problem={problem}>
+            <p className={styles.message} role="alert">
+              {PAGE_PROBLEM_TEXTS[problem]}
+            </p>
+            <button
+              type="button"
+              className={controls.primaryButton}
+              onClick={() => window.shifted.reloadGoogleApp()}
+            >
+              {MAIN.reload}
+            </button>
+          </div>
+        )
+      }
       // The view of the Google app covers the content area.
       return <></>
+    }
   }
 }
 

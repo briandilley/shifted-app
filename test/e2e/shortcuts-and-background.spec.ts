@@ -273,6 +273,24 @@ test.describe('with short test timers', () => {
     await addAccountAndSignIn(shifted, mainWindow, fakeGoogle, ONE)
     await expect.poll(() => mainWindowVisible(shifted)).toBe(true)
 
+    // On Linux with no tray, for example under `xvfb-run`, closing the main window quits
+    // Shifted, because nothing could show the window again.
+    const hasTray = await shifted.evaluate(
+      () =>
+        (globalThis as { shiftedTestRecords?: { hasTray: boolean } }).shiftedTestRecords?.hasTray ??
+        false
+    )
+    if (process.platform === 'linux' && !hasTray) {
+      const quit = new Promise<void>((resolve) => shifted.once('close', () => resolve()))
+      await shifted.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()
+          .find((window) => !window.webContents.getURL().includes('#'))
+          ?.close()
+      })
+      await quit
+      return
+    }
+
     await shifted.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()
         .find((window) => !window.webContents.getURL().includes('#'))

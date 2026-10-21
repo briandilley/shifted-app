@@ -21,6 +21,7 @@ import { isAccountId } from './config'
 import { isDefaultEmailApp, makeDefaultEmailApp } from './default-email-app'
 import { exportConfigurationToFile } from './export-configuration'
 import type { ImportWindow } from './import-window'
+import type { MemoryWindow } from './memory-window'
 import type { ScreenPicker } from './screen-picker'
 import type { SettingsWindow } from './settings-window'
 
@@ -46,6 +47,8 @@ function logError(action: string): (error: unknown) => void {
 /** Export and import of the configuration. See "Move to another computer" in `PRODUCT.md`. */
 export interface ConfigTransferIpc {
   importWindow: ImportWindow
+  /** The "Memory use" window of the Help menu. */
+  memoryWindow: MemoryWindow
   /** "Email it to myself": a new message in Gmail of the selected account. */
   emailConfigurationToSelf(): void
 }
@@ -88,6 +91,11 @@ export function registerIpc(
   ipcMain.on(IpcChannel.selectGoogleApp, (event, googleApp: unknown) => {
     if (!isMainScreen(event.sender) || !isGoogleApp(googleApp)) return
     accounts.selectGoogleApp(googleApp)
+  })
+
+  ipcMain.on(IpcChannel.reloadGoogleApp, (event) => {
+    if (!isMainScreen(event.sender)) return
+    accounts.reloadGoogleApp()
   })
 
   ipcMain.on(IpcChannel.moveAccount, (event, accountId: unknown, toIndex: unknown) => {
@@ -271,5 +279,10 @@ export function registerIpc(
   ipcMain.on(IpcChannel.cancelImport, (event) => {
     if (!importWindow.isScreen(event.sender)) return
     importWindow.close()
+  })
+
+  ipcMain.handle(IpcChannel.getMemoryUse, (event) => {
+    if (!transfer.memoryWindow.isScreen(event.sender)) throw new Error('Not the memory window.')
+    return transfer.memoryWindow.info()
   })
 }

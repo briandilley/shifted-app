@@ -1,8 +1,9 @@
-import { accountColorName, type AccountState, type GoogleApp } from '../../shared/api'
+import type { AccountState } from '../../shared/api'
+import { NEW_ACCOUNT, unreadText, unreadWarningText } from '../strings'
 
 /** The account name is the email address. A new account has no address yet. */
 export function accountName(account: AccountState): string {
-  return account.email || 'New account'
+  return account.email || NEW_ACCOUNT
 }
 
 /** The name that the screens of Shifted show: the nickname, or else the account name. */
@@ -24,10 +25,21 @@ export function accountLabel(account: AccountState): string {
  * What the unread badge of an account says, for screen readers, or `null` when the badge
  * shows nothing.
  */
-export function unreadDescription(account: AccountState): string | null {
-  if (account.unreadWarning !== null) return `Unread count not available: ${account.unreadWarning}`
+export function unreadDescription(
+  account: Pick<AccountState, 'unreadCount' | 'unreadWarning'>
+): string | null {
+  if (account.unreadWarning !== null) return unreadWarningText(account.unreadWarning)
   const count = account.unreadCount ?? 0
-  return count > 0 ? `${count} unread` : null
+  return count > 0 ? unreadText(count) : null
+}
+
+/**
+ * The accessible name of the button of an account in the sidebar: the name of the account
+ * and what its unread badge says, for example "work@company.com, 3 unread".
+ */
+export function sidebarAccountLabel(account: AccountState): string {
+  const unread = unreadDescription(account)
+  return unread ? `${accountLabel(account)}, ${unread}` : accountLabel(account)
 }
 
 /** The letter that the avatar shows when Shifted has no photo. */
@@ -46,14 +58,4 @@ export function textColorOn(color: string): string {
   })
   const luminance = 0.2126 * (r ?? 0) + 0.7152 * (g ?? 0) + 0.0722 * (b ?? 0)
   return luminance > 0.4 ? '#202124' : '#ffffff'
-}
-
-/** The name of an account color, for example "Blue". */
-export function colorName(color: string): string {
-  return accountColorName(color)
-}
-
-export const GOOGLE_APP_NAMES: Readonly<Record<GoogleApp, string>> = {
-  gmail: 'Gmail',
-  calendar: 'Calendar'
 }

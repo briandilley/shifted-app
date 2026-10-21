@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen } from 'electron'
+import { app, BrowserWindow, net, screen } from 'electron'
 import { join } from 'node:path'
 import { optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -14,10 +14,13 @@ import { registerIpc } from './ipc'
 import { newMailNotifications } from './new-mail'
 import { findMailtoArgument, isMailtoUrl } from './mailto'
 import { MailtoLinks } from './mailto-links'
+import { MemoryWindow } from './memory-window'
+import { NetworkWatcher } from './network-watcher'
 import { wasOpenedAtLogin } from './login-item'
 import { iconFromDataUrl, Notifier } from './notifications'
 import { registerPageNotifications } from './page-notifications'
 import { ProfilePhotos } from './profile-photos'
+import { removeRemoteDebuggingSwitches } from './remote-debugging'
 import { ScreenPicker } from './screen-picker'
 import { SettingsWindow } from './settings-window'
 import { catchShortcuts, type ShortcutAction } from './shortcuts'
@@ -27,6 +30,7 @@ import {
   shiftedScreenWebPreferences
 } from './shifted-screens'
 import { isTrayAvailable, ShiftedTray } from './tray'
+import { testRecords } from './test-hooks'
 import { appBadgeTotal } from './unread-counts'
 import { applyUserAgent } from './user-agent'
 import {
@@ -39,6 +43,13 @@ import { restoredBounds, WINDOW_STATE_FILE_NAME, WindowStateKeeper } from './win
 
 /** The bundle identifier of Shifted. See "Name" in `docs/spec/PRODUCT.md`. */
 const APP_ID = 'io.github.briandilley.shifted'
+
+// A production build opens no remote debugging port. Chromium opens it after the main
+// script runs, so removing the switches here is in time. Development builds and the
+// end-to-end tests keep them.
+if (app.isPackaged) {
+  removeRemoteDebuggingSwitches(app.commandLine)
+}
 
 // Tests give each run its own user data folder, so that tests never share state.
 const userDataDir = process.env['SHIFTED_USER_DATA_DIR']
@@ -170,7 +181,9 @@ function createMainWindow(options: MainWindowOptions): BrowserWindow {
   return mainWindow
 }
 
-// Shifted never skips a certificate error.
+// Shifted never skips a certificate error: the page is blocked. The content area shows a
+// message in place of a Google app (`account-views.ts`), and the sign-in window and the
+// child windows show a message box (`certificate-errors.ts`).
 app.on('certificate-error', (event, _webContents, _url, _error, _certificate, callback) => {
   event.preventDefault()
   callback(false)
@@ -212,8 +225,10 @@ function startShifted(): void {
   const importWindow = new ImportWindow(accounts, () => {
     showMainWindow?.()
   })
+  const memoryWindow = new MemoryWindow(accounts)
   registerIpc(accounts, settings, screenPicker, accountPicker, {
     importWindow,
+    memoryWindow,
     // The compose path of `mailto:` links: Gmail of the account, in the main window, which
     // comes to the front.
     emailConfigurationToSelf: () =>
@@ -226,6 +241,8 @@ function startShifted(): void {
   // On Windows and Linux, the tray icon shows the total and the main window. On Linux
   // with no tray, closing the main window quits Shifted.
   const hasTray = isTrayAvailable()
+  const records = testRecords()
+  if (records) records.hasTray = hasTray
   const windowState = new WindowStateKeeper(join(userData, WINDOW_STATE_FILE_NAME))
   const mainWindowOptions = (hidden: boolean): MainWindowOptions => ({
     accounts,
@@ -311,7 +328,8 @@ function startShifted(): void {
   const menuActions: AppMenuActions = {
     runShortcut,
     snooze: (choice) => accounts.setSnooze(choice),
-    stopSnooze: () => accounts.stopSnooze()
+    stopSnooze: () => accounts.stopSnooze(),
+    showMemoryUse: () => memoryWindow.open()
   }
   const accountNames = (): string[] =>
     accounts.state().accounts.map((account) => account.nickname || account.email || 'New account')
@@ -381,9 +399,17 @@ function startShifted(): void {
     accountPhoto: (accountId) => accounts.account(accountId)?.photo ?? null
   })
 
+  // When the network comes back, read every feed at once, so that the badges come back.
+  const network = new NetworkWatcher(
+    () => net.isOnline(),
+    () => accounts.networkBack()
+  )
+  network.start()
+
   // Quit closes all windows and ends the feed polling.
   app.on('before-quit', () => {
     quitting = true
+    network.stop()
     accounts.shutdown()
   })
   app.on('quit', () => {

@@ -1,0 +1,74 @@
+/*
+ * The "Memory use" window, with the look of the other small windows: the heading on the
+ * backdrop, and the table in one card in --surface. See "The other windows" in
+ * docs/spec/DESIGN.md.
+ */
+.window {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  background: var(--base);
+}
+
+.header {
+  padding: 14px 20px 4px;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.note {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+
+.card {
+  min-height: 0;
+  flex: 1;
+  margin: 10px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--surface-shadow);
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--separator);
+  text-align: left;
+}
+
+.table th {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.table .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.asleep {
+  color: var(--text-secondary);
+}
+
+.total td {
+  border-bottom: none;
+  font-weight: 600;
+}
+
+.empty {
+  padding: 14px;
+  color: var(--text-secondary);
+}

@@ -22,6 +22,9 @@ export const SNOOZE_CHOICES_MENU_ITEM_ID = 'snooze-choices'
 /** The shortcut that opens the snooze choices. */
 export const SNOOZE_ACCELERATOR = shortcut(SNOOZE_CHOICES_MENU_ITEM_ID).accelerator
 
+/** The id of the item of the Help menu that opens the "Memory use" window. */
+export const MEMORY_USE_MENU_ITEM_ID = 'memory-use'
+
 /** The label of the item that stops the snooze. */
 export const STOP_SNOOZE_LABEL = 'Stop snooze'
 
@@ -33,6 +36,8 @@ export interface SnoozeMenuActions {
 export interface AppMenuActions extends SnoozeMenuActions {
   /** Run the action of a shortcut: Settings, Add account, the accounts, and so on. */
   runShortcut(action: ShortcutAction): void
+  /** Open the "Memory use" window. */
+  showMemoryUse(): void
 }
 
 /** A menu item that runs the action of a shortcut, with the keys of the shortcut. */
@@ -150,6 +155,13 @@ export function appMenuTemplate(
     ]
   }
   const windowMenu: MenuItemConstructorOptions = { role: 'windowMenu' }
+  // The Help menu shows the memory of each Google app of each account.
+  const help: MenuItemConstructorOptions = {
+    role: 'help',
+    submenu: [
+      { id: MEMORY_USE_MENU_ITEM_ID, label: 'Memory use', click: () => actions.showMemoryUse() }
+    ]
+  }
 
   if (platform === 'darwin') {
     return [
@@ -174,7 +186,8 @@ export function appMenuTemplate(
       edit,
       view,
       accounts,
-      windowMenu
+      windowMenu,
+      help
     ]
   }
   return [
@@ -191,7 +204,8 @@ export function appMenuTemplate(
     edit,
     view,
     accounts,
-    windowMenu
+    windowMenu,
+    help
   ]
 }
 

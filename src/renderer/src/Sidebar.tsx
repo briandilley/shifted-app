@@ -1,7 +1,8 @@
 import { Import, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { unreadBadgeText, type AccountState } from '../../shared/api'
-import { accountLabel, accountTooltip, unreadDescription } from './account-display'
+import { MAIN } from '../strings'
+import { accountTooltip, sidebarAccountLabel } from './account-display'
 import Avatar from './Avatar'
 import styles from './Sidebar.module.css'
 
@@ -75,6 +76,9 @@ function UnreadBadge({ account }: { account: AccountState }): React.JSX.Element 
 /**
  * The sidebar: one avatar for each account, in the order of the configuration, and the
  * add-account button below the list. Drag an account to a new place to change the order.
+ *
+ * The list of accounts is one stop of the Tab key. The Up and Down arrow keys (and Home
+ * and End) move the focus through the accounts, and Enter selects the focused account.
  */
 function Sidebar({ accounts, selectedAccountId, showImport }: SidebarProps): React.JSX.Element {
   const [drag, setDrag] = useState<Drag | null>(null)
@@ -83,6 +87,9 @@ function Sidebar({ accounts, selectedAccountId, showImport }: SidebarProps): Rea
   const items = useRef(new Map<string, HTMLElement>())
   const dragRef = useRef<Drag | null>(null)
   const ignoreClick = useRef(false)
+  /** The account that has the keyboard focus, or had it last. */
+  const [focusedId, setFocusedId] = useState<string | null>(null)
+  const buttons = useRef(new Map<string, HTMLButtonElement>())
 
   const ids = accounts.map((account) => account.id)
   let shown = accounts
@@ -152,19 +159,38 @@ function Sidebar({ accounts, selectedAccountId, showImport }: SidebarProps): Rea
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, accountId: string): void => {
-    // Alt+Up and Alt+Down move the account, for people who do not use a mouse.
-    if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
-    event.preventDefault()
     const index = ids.indexOf(accountId)
-    const toIndex = event.key === 'ArrowUp' ? index - 1 : index + 1
-    if (toIndex < 0 || toIndex >= ids.length) return
-    window.shifted.moveAccount(accountId, toIndex)
+    if (event.altKey) {
+      // Alt+Up and Alt+Down move the account, for people who do not use a mouse.
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+      event.preventDefault()
+      const toIndex = event.key === 'ArrowUp' ? index - 1 : index + 1
+      if (toIndex < 0 || toIndex >= ids.length) return
+      window.shifted.moveAccount(accountId, toIndex)
+      return
+    }
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return
+    // The arrow keys move the focus. Enter, like a click, selects the account.
+    let next: number
+    if (event.key === 'ArrowDown') next = Math.min(index + 1, ids.length - 1)
+    else if (event.key === 'ArrowUp') next = Math.max(index - 1, 0)
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = ids.length - 1
+    else return
+    event.preventDefault()
+    const nextId = ids[next]
+    if (nextId) buttons.current.get(nextId)?.focus()
   }
 
   const selectedIndex = shown.findIndex((account) => account.id === selectedAccountId)
+  // The account that the Tab key reaches: the focused one, else the selected one.
+  const tabStopId =
+    (focusedId !== null && ids.includes(focusedId) ? focusedId : null) ??
+    (selectedAccountId !== null && ids.includes(selectedAccountId) ? selectedAccountId : null) ??
+    ids[0]
 
   return (
-    <nav className={styles.sidebar} aria-label="Accounts">
+    <nav className={styles.sidebar} aria-label={MAIN.accountsLabel}>
       <ul className={styles.list}>
         {selectedIndex >= 0 && (
           // The selection tile behind the selected account. It joins the content area, and
@@ -182,8 +208,6 @@ function Sidebar({ accounts, selectedAccountId, showImport }: SidebarProps): Rea
         )}
         {shown.map((account) => {
           const selected = account.id === selectedAccountId
-          const unread = unreadDescription(account)
-          const unreadId = `unread-${account.id}`
           const dragging = drag?.moving === true && drag.accountId === account.id
           return (
             <li
@@ -199,13 +223,18 @@ function Sidebar({ accounts, selectedAccountId, showImport }: SidebarProps): Rea
               ].join(' ')}
             >
               <button
+                ref={(element) => {
+                  if (element) buttons.current.set(account.id, element)
+                  else buttons.current.delete(account.id)
+                }}
                 type="button"
                 className={styles.account}
-                aria-label={accountLabel(account)}
+                aria-label={sidebarAccountLabel(account)}
                 aria-current={selected ? 'true' : undefined}
-                aria-describedby={unread ? unreadId : undefined}
+                tabIndex={account.id === tabStopId ? 0 : -1}
                 title={accountTooltip(account)}
                 data-account-id={account.id}
+                onFocus={() => setFocusedId(account.id)}
                 onClick={() => {
                   if (!ignoreClick.current) window.shifted.selectAccount(account.id)
                 }}
@@ -218,11 +247,6 @@ function Sidebar({ accounts, selectedAccountId, showImport }: SidebarProps): Rea
               >
                 <Avatar account={account} size={38} />
                 <UnreadBadge account={account} />
-                {unread && (
-                  <span id={unreadId} hidden>
-                    {unread}
-                  </span>
-                )}
               </button>
             </li>
           )
@@ -231,8 +255,8 @@ function Sidebar({ accounts, selectedAccountId, showImport }: SidebarProps): Rea
       <button
         type="button"
         className={styles.addAccount}
-        aria-label="Add account"
-        title="Add account"
+        aria-label={MAIN.addAccount}
+        title={MAIN.addAccount}
         onClick={() => window.shifted.addAccount()}
       >
         <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -242,8 +266,8 @@ function Sidebar({ accounts, selectedAccountId, showImport }: SidebarProps): Rea
         <button
           type="button"
           className={styles.importConfiguration}
-          aria-label="Import configuration…"
-          title="Import configuration…"
+          aria-label={MAIN.importConfiguration}
+          title={MAIN.importConfiguration}
           onClick={() => window.shifted.openImportWindow()}
         >
           <Import size={16} strokeWidth={1.75} aria-hidden="true" />

@@ -166,7 +166,8 @@ describe('the badges', () => {
       quietHours: defaultQuietHours(),
       unreadCountSource: 'automatic',
       unreadFeed: 'primary',
-      automaticFeedLearned: false
+      automaticFeedLearned: false,
+      pageProblems: {}
     }
   }
 

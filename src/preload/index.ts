@@ -6,6 +6,7 @@ import {
   type GoogleApp,
   type ImportReadResult,
   type MailtoPickerInfo,
+  type MemoryUse,
   type NotificationKind,
   type QuietHours,
   type ScreenPickerInfo,
@@ -38,6 +39,7 @@ const shifted: ShiftedApi = Object.freeze({
   selectAccount: (accountId: string) => ipcRenderer.send(IpcChannel.selectAccount, accountId),
   selectGoogleApp: (googleApp: GoogleApp) =>
     ipcRenderer.send(IpcChannel.selectGoogleApp, googleApp),
+  reloadGoogleApp: () => ipcRenderer.send(IpcChannel.reloadGoogleApp),
   moveAccount: (accountId: string, toIndex: number) =>
     ipcRenderer.send(IpcChannel.moveAccount, accountId, toIndex),
   showAccountMenu: (accountId: string) => ipcRenderer.send(IpcChannel.showAccountMenu, accountId),
@@ -87,7 +89,8 @@ const shifted: ShiftedApi = Object.freeze({
   readImportText: (text: string) =>
     ipcRenderer.invoke(IpcChannel.readImportText, text) as Promise<ImportReadResult>,
   confirmImport: () => ipcRenderer.send(IpcChannel.confirmImport),
-  cancelImport: () => ipcRenderer.send(IpcChannel.cancelImport)
+  cancelImport: () => ipcRenderer.send(IpcChannel.cancelImport),
+  getMemoryUse: () => ipcRenderer.invoke(IpcChannel.getMemoryUse) as Promise<MemoryUse>
 })
 
 contextBridge.exposeInMainWorld('shifted', shifted)

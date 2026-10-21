@@ -19,6 +19,7 @@ import {
   type PageNotificationEvent,
   type PageNotificationSource
 } from '../shared/page-notifications'
+import { TEST_CRASH_CHANNEL, TEST_HOOKS_ARGUMENT } from '../shared/test-hooks'
 
 type EventListener = (id: number, type: PageNotificationEvent) => void
 
@@ -216,3 +217,11 @@ function installReplacement(shifted: NotificationBridge): void {
 }
 
 contextBridge.executeInMainWorld({ func: installReplacement, args: [bridge] })
+
+// Test hook: in test mode only, the main process can make this page crash, so that an
+// end-to-end test sees the panel "This page stopped.". The page itself never sees it.
+if (process.argv.includes(TEST_HOOKS_ARGUMENT)) {
+  ipcRenderer.on(TEST_CRASH_CHANNEL, () => {
+    process.crash()
+  })
+}

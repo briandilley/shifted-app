@@ -242,3 +242,13 @@ export function gmailMessageUrl(link: string): string {
   }
   return isGmailLink(url.href) ? url.href : gmailUrl()
 }
+
+/**
+ * Where Chromium downloads the spell check dictionaries on Windows and Linux, or
+ * `undefined` for Chromium's own place, a Google server. In test mode, the fake server,
+ * which has no dictionaries, so that the tests send nothing to Google.
+ */
+export function spellCheckDictionaryUrl(): string | undefined {
+  const server = testServerUrl()
+  return server ? `${server}/spellcheck/` : undefined
+}

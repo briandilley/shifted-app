@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ScreenPickerInfo } from '../../shared/api'
+import { SCREEN_PICKER } from '../strings'
 import controls from './controls.module.css'
 import styles from './ScreenPickerScreen.module.css'
 
@@ -31,22 +32,20 @@ function ScreenPickerScreen(): React.JSX.Element {
   }, [])
 
   const groups = [
-    { kind: 'screen' as const, title: 'Screens' },
-    { kind: 'window' as const, title: 'Windows' }
+    { kind: 'screen' as const, title: SCREEN_PICKER.screens },
+    { kind: 'window' as const, title: SCREEN_PICKER.windows }
   ]
 
   return (
     <div className={styles.window}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Share your screen</h1>
-        {info && (
-          <p className={styles.note}>
-            A page of {info.accountName} asks to share. Choose a screen or a window.
-          </p>
-        )}
+        <h1 className={styles.title}>{SCREEN_PICKER.title}</h1>
+        {info && <p className={styles.note}>{SCREEN_PICKER.note(info.accountName)}</p>}
       </header>
       <main className={styles.content}>
-        {info?.sources.length === 0 && <p className={styles.note}>Nothing to share.</p>}
+        {info?.sources.length === 0 && (
+          <p className={styles.note}>{SCREEN_PICKER.nothingToShare}</p>
+        )}
         {groups.map(({ kind, title }) => {
           const sources = info?.sources.filter((source) => source.kind === kind) ?? []
           if (sources.length === 0) return null
@@ -81,7 +80,7 @@ function ScreenPickerScreen(): React.JSX.Element {
           className={controls.secondaryButton}
           onClick={() => window.shifted.chooseScreenSource(null)}
         >
-          Cancel
+          {SCREEN_PICKER.cancel}
         </button>
       </footer>
     </div>

@@ -25,6 +25,18 @@ linux:
     - AppImage
   category: Network
 npmRebuild: false
+# The Electron fuses of "Security" in docs/spec/BUILD.md. electron-builder flips them in
+# the packaged executable right before it signs the app, and writes the asar integrity
+# hash for macOS and Windows. `resetAdHocDarwinSignature` keeps an unsigned build for Apple
+# silicon able to start: flipping a fuse breaks the ad hoc signature of the executable.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableCookieEncryption: true
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  resetAdHocDarwinSignature: true
 # Shifted can be the default email app. electron-builder declares the `mailto:` scheme in
 # the macOS Info.plist, the Linux desktop file, and the Windows installer.
 protocols:

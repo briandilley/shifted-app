@@ -1,25 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ACCOUNT_COLORS,
-  ASKED_PERMISSION_NAMES,
   ASKED_PERMISSIONS,
   accountSettingsPage,
-  BACKGROUND_LOADING_NAMES,
   BACKGROUND_LOADING_VALUES,
   isBackgroundLoading,
   isSameColor,
   isTimeOfDay,
   isUnreadCountSource,
   MAX_NICKNAME_LENGTH,
-  NOTIFICATION_KIND_NAMES,
   NOTIFICATION_KINDS,
   parseSettingsRequest,
   settingsPageAccountId,
-  UNREAD_COUNT_SOURCE_NAMES,
   UNREAD_COUNT_SOURCES,
-  WEEKDAYS,
   type AccountState,
-  type BackgroundLoading,
   type GeneralConfig,
   type QuietHours,
   type SettingsFocus,
@@ -27,7 +21,17 @@ import {
   type ShiftedState,
   type Snooze
 } from '../../shared/api'
-import { accountName, accountTitle, colorName } from './account-display'
+import {
+  ASKED_PERMISSION_NAMES,
+  BACKGROUND_LOADING_NAMES,
+  BACKGROUND_LOADING_NOTES,
+  colorName,
+  NOTIFICATION_KIND_NAMES,
+  SETTINGS,
+  UNREAD_COUNT_SOURCE_NAMES,
+  WEEKDAYS
+} from '../strings'
+import { accountName, accountTitle } from './account-display'
 import Avatar from './Avatar'
 import controls from './controls.module.css'
 import styles from './SettingsScreen.module.css'
@@ -81,7 +85,7 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
 
       <div className={styles.field}>
         <label htmlFor={nicknameId} className={styles.label}>
-          Nickname
+          {SETTINGS.nickname}
         </label>
         <input
           ref={nicknameRef}
@@ -100,7 +104,7 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
       </div>
 
       <fieldset className={styles.field}>
-        <legend className={styles.label}>Color</legend>
+        <legend className={styles.label}>{SETTINGS.color}</legend>
         <div ref={colorsRef} className={styles.colors}>
           {ACCOUNT_COLORS.map((color) => (
             <label key={color} className={styles.swatch} title={colorName(color)}>
@@ -134,14 +138,14 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
           disabled={account.status !== 'signed-in'}
           onClick={() => window.shifted.signOut(account.id)}
         >
-          Sign out
+          {SETTINGS.signOut}
         </button>
         <button
           type="button"
           className={controls.secondaryButton}
           onClick={() => window.shifted.removeAccount(account.id)}
         >
-          Remove
+          {SETTINGS.remove}
         </button>
       </div>
     </section>
@@ -150,10 +154,9 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
 
 /** What "Automatic" does now, below the "Unread count source" field. */
 function automaticNote(account: AccountState): string {
-  const feed = UNREAD_COUNT_SOURCE_NAMES[account.unreadFeed]
   return account.automaticFeedLearned
-    ? `Shifted found that Gmail counts ${feed === 'Primary' ? 'the Primary tab' : 'the whole inbox'}, and reads that count.`
-    : 'Shifted compares the number next to Inbox in Gmail with its feeds the next time Gmail loads. Until then, it counts the Primary tab.'
+    ? SETTINGS.automaticFound(account.unreadFeed === 'primary')
+    : SETTINGS.automaticLearning
 }
 
 /** "Unread count source": where the unread count of the account comes from. */
@@ -162,7 +165,7 @@ function UnreadCountSourceField({ account }: { account: AccountState }): React.J
   return (
     <div className={styles.field}>
       <label htmlFor={id} className={styles.label}>
-        Unread count source
+        {SETTINGS.unreadCountSource}
       </label>
       <select
         id={id}
@@ -182,7 +185,7 @@ function UnreadCountSourceField({ account }: { account: AccountState }): React.J
       <p className={styles.note}>
         {account.unreadCountSource === 'automatic'
           ? automaticNote(account)
-          : 'The badge counts the unread messages of this feed. Choose Automatic to match the number next to Inbox in Gmail.'}
+          : SETTINGS.unreadOverrideNote}
       </p>
     </div>
   )
@@ -206,7 +209,7 @@ function NotificationSwitchesField({
   return (
     <section ref={sectionRef} className={styles.field} aria-labelledby={headingId}>
       <h2 id={headingId} className={styles.label}>
-        Notifications
+        {SETTINGS.notifications}
       </h2>
       {NOTIFICATION_KINDS.map((kind) => (
         <label key={kind} className={styles.switch}>
@@ -256,7 +259,7 @@ function QuietHoursField({ account }: { account: AccountState }): React.JSX.Elem
   return (
     <section className={styles.field} aria-labelledby={headingId}>
       <h2 id={headingId} className={styles.label}>
-        Quiet hours
+        {SETTINGS.quietHours}
       </h2>
       <label className={styles.switch}>
         <input
@@ -266,11 +269,11 @@ function QuietHoursField({ account }: { account: AccountState }): React.JSX.Elem
           checked={quietHours.enabled}
           onChange={(event) => save({ enabled: event.target.checked })}
         />
-        Quiet hours
+        {SETTINGS.quietHours}
       </label>
       <fieldset className={styles.quietHours} disabled={!quietHours.enabled}>
         <div className={styles.timeRange}>
-          <label htmlFor={startId}>Quiet every day from</label>
+          <label htmlFor={startId}>{SETTINGS.quietFrom}</label>
           <input
             id={startId}
             className={controls.textField}
@@ -282,7 +285,7 @@ function QuietHoursField({ account }: { account: AccountState }): React.JSX.Elem
               if (isTimeOfDay(event.target.value)) save({ start: event.target.value })
             }}
           />
-          <label htmlFor={endId}>to</label>
+          <label htmlFor={endId}>{SETTINGS.quietTo}</label>
           <input
             id={endId}
             className={controls.textField}
@@ -295,8 +298,8 @@ function QuietHoursField({ account }: { account: AccountState }): React.JSX.Elem
             }}
           />
         </div>
-        <div className={styles.weekdays} role="group" aria-label="Quiet all day on">
-          <span className={styles.weekdaysLabel}>Quiet all day on</span>
+        <div className={styles.weekdays} role="group" aria-label={SETTINGS.quietAllDayOn}>
+          <span className={styles.weekdaysLabel}>{SETTINGS.quietAllDayOn}</span>
           {WEEKDAYS.map(({ day, name, short }) => (
             <label key={day} className={styles.weekday} title={name}>
               <input
@@ -310,24 +313,20 @@ function QuietHoursField({ account }: { account: AccountState }): React.JSX.Elem
           ))}
         </div>
       </fieldset>
-      <p className={styles.note}>
-        While quiet hours are on, this account shows no notifications in the time range and on the
-        days that you choose. The range can cross midnight, for example 22:00 to 07:00. A
-        notification that quiet hours stop does not show later. The unread badge keeps updating.
-      </p>
+      <p className={styles.note}>{SETTINGS.quietHoursNote}</p>
     </section>
   )
 }
 
 /** The text of the snooze state, for example "Snoozed until 14:30". */
 function snoozeText(snooze: Snooze | null): string {
-  if (!snooze) return 'Notifications are on. Snooze is off.'
-  if (snooze.until === null) return 'Snoozed until you turn it off.'
+  if (!snooze) return SETTINGS.snoozeOff
+  if (snooze.until === null) return SETTINGS.snoozedUntilTurnedOff
   const end = new Date(snooze.until)
   const time = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   const sameDay = end.toDateString() === new Date().toDateString()
   const day = sameDay ? '' : `${end.toLocaleDateString([], { weekday: 'long' })} `
-  return `Snoozed until ${day}${time}.`
+  return SETTINGS.snoozedUntil(`${day}${time}`)
 }
 
 /** The Notifications page: the snooze state, and a note about Gmail's own notifications. */
@@ -335,10 +334,10 @@ function NotificationsPage({ snooze }: { snooze: Snooze | null }): React.JSX.Ele
   return (
     <section className={styles.page} aria-labelledby="page-title">
       <h1 id="page-title" className={styles.title}>
-        Notifications
+        {SETTINGS.notifications}
       </h1>
       <div className={styles.field}>
-        <span className={styles.label}>Snooze</span>
+        <span className={styles.label}>{SETTINGS.snooze}</span>
         <p className={styles.snoozeState} data-snooze-state>
           {snoozeText(snooze)}
         </p>
@@ -349,21 +348,14 @@ function NotificationsPage({ snooze }: { snooze: Snooze | null }): React.JSX.Ele
             disabled={snooze === null}
             onClick={() => window.shifted.stopSnooze()}
           >
-            Stop snooze
+            {SETTINGS.stopSnooze}
           </button>
         </div>
-        <p className={styles.note}>
-          Snooze stops the notifications of all accounts. To snooze, press{' '}
-          {window.shifted.platform === 'darwin'
-            ? 'Cmd+Shift+S, or use Snooze in the Shifted menu.'
-            : 'Ctrl+Shift+S, or use Snooze in the File menu.'}
-        </p>
+        <p className={styles.note}>{SETTINGS.snoozeNote(window.shifted.platform === 'darwin')}</p>
       </div>
       <div className={styles.field}>
-        <span className={styles.label}>Gmail&apos;s own notifications</span>
-        <p className={styles.note}>
-          Keep Gmail&apos;s own desktop notifications for new mail off. Shifted already shows them.
-        </p>
+        <span className={styles.label}>{SETTINGS.gmailNotifications}</span>
+        <p className={styles.note}>{SETTINGS.gmailNotificationsNote}</p>
       </div>
     </section>
   )
@@ -375,19 +367,18 @@ function PagePermissionsField({ account }: { account: AccountState }): React.JSX
   return (
     <section className={styles.field} aria-labelledby={`permissions-${account.id}`}>
       <h2 id={`permissions-${account.id}`} className={styles.label}>
-        Page permissions
+        {SETTINGS.pagePermissions}
       </h2>
       {saved.length === 0 ? (
-        <p className={styles.note}>
-          No saved answers. Shifted asks the first time a page asks for the camera and microphone,
-          screen sharing, or the clipboard.
-        </p>
+        <p className={styles.note}>{SETTINGS.noPagePermissions}</p>
       ) : (
         <ul className={styles.permissions}>
           {saved.map((permission) => (
             <li key={permission}>
-              {ASKED_PERMISSION_NAMES[permission]}:{' '}
-              {account.pagePermissions[permission] === 'allow' ? 'Allowed' : 'Denied'}
+              {SETTINGS.permissionAnswer(
+                ASKED_PERMISSION_NAMES[permission],
+                account.pagePermissions[permission] === 'allow'
+              )}
             </li>
           ))}
         </ul>
@@ -399,7 +390,7 @@ function PagePermissionsField({ account }: { account: AccountState }): React.JSX
           disabled={saved.length === 0}
           onClick={() => window.shifted.resetPagePermissions(account.id)}
         >
-          Reset page permissions
+          {SETTINGS.resetPagePermissions}
         </button>
       </div>
     </section>
@@ -409,7 +400,7 @@ function PagePermissionsField({ account }: { account: AccountState }): React.JSX
 /** The text next to the "Make Shifted the default email app" button. */
 function defaultEmailAppText(isDefault: boolean | null): string {
   if (isDefault === null) return ''
-  return isDefault ? 'Shifted is the default email app.' : 'Shifted is not the default email app.'
+  return isDefault ? SETTINGS.isDefaultEmailApp : SETTINGS.isNotDefaultEmailApp
 }
 
 /** "Make Shifted the default email app", and whether it is the default now. */
@@ -452,7 +443,7 @@ function DefaultEmailAppField(): React.JSX.Element {
 
   return (
     <div className={styles.field}>
-      <span className={styles.label}>Default email app</span>
+      <span className={styles.label}>{SETTINGS.defaultEmailApp}</span>
       <div className={styles.row}>
         <button
           type="button"
@@ -460,7 +451,7 @@ function DefaultEmailAppField(): React.JSX.Element {
           disabled={busy}
           onClick={makeDefault}
         >
-          Make Shifted the default email app
+          {SETTINGS.makeDefaultEmailApp}
         </button>
         <span className={styles.note} data-default-email-app role="status">
           {defaultEmailAppText(isDefault)}
@@ -468,8 +459,8 @@ function DefaultEmailAppField(): React.JSX.Element {
       </div>
       <p className={styles.note}>
         {window.shifted.platform === 'win32'
-          ? 'Windows opens its Default apps page. Choose Shifted for email links (MAILTO) there.'
-          : 'Email links from other apps then open a new message in Shifted.'}
+          ? SETTINGS.defaultEmailAppNoteWindows
+          : SETTINGS.defaultEmailAppNote}
       </p>
     </div>
   )
@@ -480,11 +471,9 @@ function MailtoDefaultField({ state }: { state: ShiftedState }): React.JSX.Eleme
   const account = state.accounts.find((candidate) => candidate.id === state.mailtoDefaultAccountId)
   return (
     <div className={styles.field}>
-      <span className={styles.label}>Account picker</span>
+      <span className={styles.label}>{SETTINGS.accountPicker}</span>
       <p className={styles.note} data-mailto-default>
-        {account
-          ? `Email links from other apps always use ${accountTitle(account)}.`
-          : 'Shifted asks which account to use for each email link from another app.'}
+        {account ? SETTINGS.alwaysUses(accountTitle(account)) : SETTINGS.asksEachTime}
       </p>
       <div>
         <button
@@ -493,20 +482,11 @@ function MailtoDefaultField({ state }: { state: ShiftedState }): React.JSX.Eleme
           disabled={!account}
           onClick={() => window.shifted.clearMailtoDefault()}
         >
-          Clear the always-use account
+          {SETTINGS.clearAlwaysUse}
         </button>
       </div>
     </div>
   )
-}
-
-/** What each value of "Background loading" does, below the field. */
-const BACKGROUND_LOADING_NOTES: Readonly<Record<BackgroundLoading, string>> = {
-  everything: 'Gmail and Calendar of every account stay loaded. This uses the most memory.',
-  'calendars-only':
-    'Calendar of every account stays loaded. Gmail of each other account sleeps 5 minutes after you leave it.',
-  'selected-account-only':
-    'Only the selected account stays loaded. Each other account sleeps 5 minutes after you leave it, and Calendar reminders come only from the selected account.'
 }
 
 /** "Open at login" and "Background loading". */
@@ -514,7 +494,7 @@ function StartupFields({ general }: { general: GeneralConfig }): React.JSX.Eleme
   return (
     <>
       <div className={styles.field}>
-        <span className={styles.label}>Startup</span>
+        <span className={styles.label}>{SETTINGS.startup}</span>
         <label className={styles.switch}>
           <input
             type="checkbox"
@@ -523,16 +503,13 @@ function StartupFields({ general }: { general: GeneralConfig }): React.JSX.Eleme
             checked={general.openAtLogin}
             onChange={(event) => window.shifted.setOpenAtLogin(event.target.checked)}
           />
-          Open at login
+          {SETTINGS.openAtLogin}
         </label>
-        <p className={styles.note}>
-          Shifted starts with no window when you log in, so that badges and notifications work at
-          once.
-        </p>
+        <p className={styles.note}>{SETTINGS.openAtLoginNote}</p>
       </div>
       <div className={styles.field}>
         <label htmlFor="background-loading" className={styles.label}>
-          Background loading
+          {SETTINGS.backgroundLoading}
         </label>
         <select
           id="background-loading"
@@ -550,8 +527,7 @@ function StartupFields({ general }: { general: GeneralConfig }): React.JSX.Eleme
           ))}
         </select>
         <p className={styles.note}>
-          {BACKGROUND_LOADING_NOTES[general.backgroundLoading]} Unread badges and new-mail
-          notifications work for every account.
+          {BACKGROUND_LOADING_NOTES[general.backgroundLoading]} {SETTINGS.backgroundLoadingNoteEnd}
         </p>
       </div>
     </>
@@ -575,7 +551,7 @@ function MoveToAnotherComputerField({ state }: { state: ShiftedState }): React.J
     window.shifted
       .exportConfiguration()
       .then((result) => {
-        if (result.kind === 'saved') setStatus(`Saved ${result.fileName}.`)
+        if (result.kind === 'saved') setStatus(SETTINGS.saved(result.fileName))
         else if (result.kind === 'error') setStatus(result.message)
       })
       .catch((error: unknown) => {
@@ -586,7 +562,7 @@ function MoveToAnotherComputerField({ state }: { state: ShiftedState }): React.J
 
   return (
     <div className={styles.field}>
-      <span className={styles.label}>Move to another computer</span>
+      <span className={styles.label}>{SETTINGS.moveToAnotherComputer}</span>
       <div className={styles.row}>
         <button
           type="button"
@@ -594,7 +570,7 @@ function MoveToAnotherComputerField({ state }: { state: ShiftedState }): React.J
           disabled={busy}
           onClick={exportToFile}
         >
-          Export configuration…
+          {SETTINGS.exportConfiguration}
         </button>
         <button
           type="button"
@@ -602,28 +578,22 @@ function MoveToAnotherComputerField({ state }: { state: ShiftedState }): React.J
           disabled={!canEmail}
           onClick={() => window.shifted.emailConfiguration()}
         >
-          Email it to myself
+          {SETTINGS.emailItToMyself}
         </button>
         <button
           type="button"
           className={controls.secondaryButton}
           onClick={() => window.shifted.openImportWindow()}
         >
-          Import configuration…
+          {SETTINGS.importConfiguration}
         </button>
       </div>
       <p className={styles.note} role="status" data-export-status>
         {status}
       </p>
       <p className={styles.note}>
-        The exported configuration has your accounts with their nicknames, colors, and notification
-        values, background loading, &quot;Ask where to save each file&quot;, and the always-use
-        account. It never has sign-ins or values that belong to this computer, such as open at
-        login. It has no password: keep it as you keep other personal files. On the other computer,
-        the import merges by address, and you sign in to each new account.{' '}
-        {canEmail
-          ? `Email it to myself opens a new message to ${selected.email} in Gmail. You click Send.`
-          : 'To email it to yourself, select an account that is signed in, in the main window.'}
+        {SETTINGS.moveNote}{' '}
+        {canEmail ? SETTINGS.emailNote(selected.email) : SETTINGS.emailNeedsAccount}
       </p>
     </div>
   )
@@ -635,11 +605,11 @@ function GeneralPage({ state }: { state: ShiftedState }): React.JSX.Element {
   return (
     <section className={styles.page} aria-labelledby="page-title">
       <h1 id="page-title" className={styles.title}>
-        General
+        {SETTINGS.general}
       </h1>
       <StartupFields general={general} />
       <div className={styles.field}>
-        <span className={styles.label}>Downloads</span>
+        <span className={styles.label}>{SETTINGS.downloads}</span>
         <label className={styles.switch}>
           <input
             type="checkbox"
@@ -648,11 +618,9 @@ function GeneralPage({ state }: { state: ShiftedState }): React.JSX.Element {
             checked={general.askWhereToSave}
             onChange={(event) => window.shifted.setAskWhereToSave(event.target.checked)}
           />
-          Ask where to save each file
+          {SETTINGS.askWhereToSave}
         </label>
-        <p className={styles.note}>
-          When this is off, Shifted saves each download in your Downloads folder.
-        </p>
+        <p className={styles.note}>{SETTINGS.downloadsNote}</p>
       </div>
       <DefaultEmailAppField />
       <MailtoDefaultField state={state} />
@@ -709,13 +677,13 @@ function SettingsScreen(): React.JSX.Element {
 
   return (
     <div className={styles.window} style={{ backgroundColor: backdrop }} data-backdrop={backdrop}>
-      <nav className={styles.list} aria-label="Settings pages">
+      <nav className={styles.list} aria-label={SETTINGS.pagesLabel}>
         <ul className={styles.entries}>
-          {entry('general', 'General')}
-          {entry('notifications', 'Notifications')}
+          {entry('general', SETTINGS.general)}
+          {entry('notifications', SETTINGS.notifications)}
         </ul>
         {accounts.length > 0 && <hr className={styles.separator} />}
-        <ul className={styles.entries} aria-label="Accounts">
+        <ul className={styles.entries} aria-label={SETTINGS.accountsLabel}>
           {accounts.map((account) =>
             entry(
               accountSettingsPage(account.id),

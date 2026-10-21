@@ -44,6 +44,11 @@ export interface ShiftedTestRecords {
    * changes the login items of the computer.
    */
   openAtLogin: boolean[]
+  /**
+   * True when Shifted shows a tray icon. On Linux with no tray (for example in a test run
+   * under `xvfb-run`), closing the main window quits Shifted.
+   */
+  hasTray: boolean
 }
 
 interface TestRecordsHolder {
@@ -61,7 +66,8 @@ export function testRecords(): ShiftedTestRecords | undefined {
     appBadgeTotal: 0,
     notifications: [],
     makeDefaultEmailApp: 0,
-    openAtLogin: []
+    openAtLogin: [],
+    hasTray: false
   }
   return holder.shiftedTestRecords
 }

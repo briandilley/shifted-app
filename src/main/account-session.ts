@@ -7,6 +7,9 @@
 import { app, session, type Session, type WebPreferences } from 'electron'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { TEST_HOOKS_ARGUMENT } from '../shared/test-hooks'
+import { isTestMode, spellCheckDictionaryUrl } from './google-urls'
+import { applySpellCheckLanguages } from './spell-check'
 
 const configuredSessions = new WeakSet<Session>()
 
@@ -15,12 +18,20 @@ export function partitionName(accountId: string): string {
   return `persist:account-${accountId}`
 }
 
-/** The session of an account, with the user agent of Shifted. */
+/**
+ * The session of an account, with the user agent of Shifted and, on Windows and Linux, the
+ * spell check languages of the operating system.
+ */
 export function accountSession(accountId: string): Session {
   const accountSession = session.fromPartition(partitionName(accountId))
   if (!configuredSessions.has(accountSession)) {
     // `app.userAgentFallback` already holds the user agent from `user-agent.ts`.
     accountSession.setUserAgent(app.userAgentFallback)
+    applySpellCheckLanguages(
+      accountSession,
+      app.getPreferredSystemLanguages(),
+      spellCheckDictionaryUrl()
+    )
     configuredSessions.add(accountSession)
   }
   return accountSession
@@ -35,7 +46,8 @@ export function accountSession(accountId: string): Session {
  *   notifications of the page to Shifted. It runs in every frame of the page
  *   (`nodeIntegrationInSubFrames`), so that a frame inside the page cannot skip the rules
  *   of Shifted. With `sandbox: true`, a preload script has no Node.js in any frame. The
- *   sign-in window does not get it.
+ *   sign-in window does not get it. In test mode only, these pages also get the argument
+ *   of the test hooks, so that an end-to-end test can make the page crash.
  */
 export function googlePageWebPreferences(
   accountSession: Session,
@@ -50,7 +62,8 @@ export function googlePageWebPreferences(
     ...(withPageNotifications
       ? {
           preload: join(__dirname, '../preload/google-page.js'),
-          nodeIntegrationInSubFrames: true
+          nodeIntegrationInSubFrames: true,
+          ...(isTestMode() ? { additionalArguments: [TEST_HOOKS_ARGUMENT] } : {})
         }
       : {})
   }

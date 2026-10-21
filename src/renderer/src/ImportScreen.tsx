@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ImportPreview, ImportReadResult } from '../../shared/api'
+import { IMPORT } from '../strings'
 import controls from './controls.module.css'
 import styles from './ImportScreen.module.css'
 
@@ -19,20 +20,17 @@ function ChangeList({ preview }: { preview: ImportPreview }): React.JSX.Element 
   const date = exportDate(preview.exportedAt)
   return (
     <div className={styles.preview} data-import-preview>
-      {date && <p className={styles.note}>Exported on {date}.</p>}
+      {date && <p className={styles.note}>{IMPORT.exportedOn(date)}</p>}
       {preview.changes.length === 0 ? (
-        <p>This configuration changes nothing on this computer.</p>
+        <p>{IMPORT.nothingChanges}</p>
       ) : (
-        <ul className={styles.changes} aria-label="Changes">
+        <ul className={styles.changes} aria-label={IMPORT.changesLabel}>
           {preview.changes.map((change) => (
             <li key={change}>{change}</li>
           ))}
         </ul>
       )}
-      <p className={styles.note}>
-        Accounts on this computer keep their sign-ins. Each new account shows a Sign in button after
-        the import.
-      </p>
+      <p className={styles.note}>{IMPORT.afterImportNote}</p>
     </div>
   )
 }
@@ -77,7 +75,7 @@ function ImportScreen(): React.JSX.Element {
       className={controls.secondaryButton}
       onClick={() => window.shifted.cancelImport()}
     >
-      Cancel
+      {IMPORT.cancel}
     </button>
   )
 
@@ -85,8 +83,8 @@ function ImportScreen(): React.JSX.Element {
     return (
       <div className={styles.window}>
         <header className={styles.header}>
-          <h1 className={styles.title}>Import configuration</h1>
-          <p className={styles.note}>Check what will change. Nothing changes until you import.</p>
+          <h1 className={styles.title}>{IMPORT.title}</h1>
+          <p className={styles.note}>{IMPORT.previewNote}</p>
         </header>
         <div className={styles.card}>
           <ChangeList preview={step.preview} />
@@ -99,7 +97,7 @@ function ImportScreen(): React.JSX.Element {
             disabled={step.preview.changes.length === 0}
             onClick={() => window.shifted.confirmImport()}
           >
-            Import
+            {IMPORT.import}
           </button>
         </footer>
       </div>
@@ -109,11 +107,8 @@ function ImportScreen(): React.JSX.Element {
   return (
     <div className={styles.window}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Import configuration</h1>
-        <p className={styles.note}>
-          Choose the file that you exported, or paste the whole message that you emailed to
-          yourself.
-        </p>
+        <h1 className={styles.title}>{IMPORT.title}</h1>
+        <p className={styles.note}>{IMPORT.inputNote}</p>
       </header>
       <div className={styles.card}>
         <div className={styles.input}>
@@ -124,11 +119,11 @@ function ImportScreen(): React.JSX.Element {
               disabled={busy}
               onClick={() => read(() => window.shifted.chooseImportFile())}
             >
-              Choose file…
+              {IMPORT.chooseFile}
             </button>
           </div>
           <label htmlFor="import-text" className={styles.sectionTitle}>
-            Or paste the message
+            {IMPORT.pasteLabel}
           </label>
           <textarea
             id="import-text"
@@ -152,7 +147,7 @@ function ImportScreen(): React.JSX.Element {
           disabled={busy || text.trim() === ''}
           onClick={() => read(() => window.shifted.readImportText(text))}
         >
-          Continue
+          {IMPORT.continue}
         </button>
       </footer>
     </div>

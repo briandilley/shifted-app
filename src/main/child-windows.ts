@@ -5,6 +5,8 @@
 import { BrowserWindow, type BrowserWindowConstructorOptions, type WebContents } from 'electron'
 import icon from '../../resources/icon.png?asset'
 import { accountSession, googlePageWebPreferences } from './account-session'
+import { showCertificateErrors } from './certificate-errors'
+import { isCrash } from './page-problems'
 
 /** The title of a child window: "Shifted: " and the name of the account. */
 export function childWindowTitle(accountName: string): string {
@@ -41,6 +43,12 @@ export class ChildWindows {
     window.on('page-title-updated', (event) => {
       event.preventDefault()
     })
+    // A child window whose page crashed has nothing to show. It closes. The person can
+    // open the pop-out again from Gmail.
+    window.webContents.on('render-process-gone', (_event, details) => {
+      if (isCrash(details.reason) && !window.isDestroyed()) window.destroy()
+    })
+    showCertificateErrors(window.webContents)
     window.on('closed', () => {
       accountWindows.delete(window)
       if (accountWindows.size === 0 && this.windows.get(accountId) === accountWindows) {
@@ -57,6 +65,13 @@ export class ChildWindows {
       }
     }
     return undefined
+  }
+
+  /** The web contents of the open child windows of the account. */
+  contentsOf(accountId: string): WebContents[] {
+    return [...(this.windows.get(accountId) ?? [])]
+      .filter((window) => !window.isDestroyed())
+      .map((window) => window.webContents)
   }
 
   /** True when the account has an open child window. */

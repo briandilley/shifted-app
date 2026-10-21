@@ -1,18 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { AccountState, AccountStatus, MailtoPickerInfo } from '../../shared/api'
+import type { AccountState, MailtoPickerInfo } from '../../shared/api'
+import { ACCOUNT_PICKER, ACCOUNT_STATUS_NAMES } from '../strings'
 import { accountLabel, accountName, accountTitle } from './account-display'
 import Avatar from './Avatar'
 import controls from './controls.module.css'
 import styles from './MailtoPickerScreen.module.css'
 import { useShiftedState } from './use-shifted-state'
-
-/** The status that an account that is not signed in shows in the list. */
-const STATUS_NAMES: Readonly<Record<AccountStatus, string>> = {
-  'signed-in': '',
-  'signing-in': 'Signing in',
-  'signed-out': 'Signed out',
-  'not-signed-in': 'Not signed in'
-}
 
 /**
  * The account picker: which account writes the new message of a `mailto:` link from
@@ -90,10 +83,15 @@ function MailtoPickerScreen(): React.JSX.Element {
         <h1 className={styles.title} title={info?.heading}>
           {info?.heading ?? ''}
         </h1>
-        <p className={styles.note}>Choose the account that writes the message.</p>
+        <p className={styles.note}>{ACCOUNT_PICKER.note}</p>
       </header>
       <div className={styles.card}>
-        <ul ref={listRef} className={styles.accounts} role="listbox" aria-label="Accounts">
+        <ul
+          ref={listRef}
+          className={styles.accounts}
+          role="listbox"
+          aria-label={ACCOUNT_PICKER.accountsLabel}
+        >
           {accounts.map((account) => (
             <li key={account.id} role="presentation">
               <button
@@ -116,7 +114,7 @@ function MailtoPickerScreen(): React.JSX.Element {
                   )}
                 </span>
                 {account.status !== 'signed-in' && (
-                  <span className={styles.status}>{STATUS_NAMES[account.status]}</span>
+                  <span className={styles.status}>{ACCOUNT_STATUS_NAMES[account.status]}</span>
                 )}
               </button>
             </li>
@@ -130,14 +128,14 @@ function MailtoPickerScreen(): React.JSX.Element {
             checked={always}
             onChange={(event) => setAlways(event.target.checked)}
           />
-          Always use this account
+          {ACCOUNT_PICKER.alwaysUse}
         </label>
         <button
           type="button"
           className={controls.secondaryButton}
           onClick={() => window.shifted.cancelMailtoPicker()}
         >
-          Cancel
+          {ACCOUNT_PICKER.cancel}
         </button>
       </footer>
     </div>

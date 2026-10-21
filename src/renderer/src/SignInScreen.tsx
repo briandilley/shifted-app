@@ -1,9 +1,6 @@
+import { SIGN_IN } from '../strings'
 import styles from './SignInScreen.module.css'
 import { useViewBounds } from './use-view-bounds'
-
-const PASSKEY_HELP =
-  'Passkeys do not work in Shifted on this computer. If Google asks for a passkey, click "Try another way" and use your password.'
-const PASSKEY_HELP_WINDOWS = 'If Google asks for a passkey, Windows Hello opens.'
 
 /**
  * The sign-in window: the line of help on the backdrop at the top, and below it a card
@@ -15,7 +12,7 @@ function SignInScreen(): React.JSX.Element {
   return (
     <div className={styles.window}>
       <p className={styles.topLine}>
-        {window.shifted.platform === 'win32' ? PASSKEY_HELP_WINDOWS : PASSKEY_HELP}
+        {window.shifted.platform === 'win32' ? SIGN_IN.passkeyHelpWindows : SIGN_IN.passkeyHelp}
       </p>
       <div ref={signInPageRef} className={styles.signInPage} />
     </div>

@@ -31,6 +31,15 @@ export const MAX_NICKNAME_LENGTH = 100
 export type AccountStatus = 'signed-in' | 'signing-in' | 'signed-out' | 'not-signed-in'
 
 /**
+ * Why the page of a Google app stopped. The content area shows a panel with a "Reload"
+ * button in place of the page.
+ *
+ * - `crashed`: the page crashed (`render-process-gone`).
+ * - `certificate-error`: the page has a certificate error, and Shifted blocked it.
+ */
+export type PageProblem = 'crashed' | 'certificate-error'
+
+/**
  * The page permissions that Shifted asks the person about, the first time a page of an
  * account asks for them. `media` is the camera and the microphone together.
  */
@@ -45,13 +54,6 @@ export const ASKED_PERMISSIONS: readonly AskedPermission[] = [
 
 export function isAskedPermission(value: unknown): value is AskedPermission {
   return value === 'media' || value === 'display-capture' || value === 'clipboard-read'
-}
-
-/** The names of the asked permissions on screen. */
-export const ASKED_PERMISSION_NAMES: Readonly<Record<AskedPermission, string>> = {
-  media: 'Camera and microphone',
-  'display-capture': 'Screen sharing',
-  'clipboard-read': 'Clipboard read'
 }
 
 /** The answer of the person to an asked permission. */
@@ -76,14 +78,6 @@ export const UNREAD_COUNT_SOURCES: readonly UnreadCountSource[] = [
   'whole-inbox',
   'important'
 ]
-
-/** The names of the choices of "Unread count source" on screen. */
-export const UNREAD_COUNT_SOURCE_NAMES: Readonly<Record<UnreadCountSource, string>> = {
-  automatic: 'Automatic',
-  primary: 'Primary',
-  'whole-inbox': 'Whole inbox',
-  important: 'Important'
-}
 
 export function isFeedChoice(value: unknown): value is FeedChoice {
   return value === 'whole-inbox' || value === 'primary' || value === 'important'
@@ -113,13 +107,6 @@ export type NotificationKind = 'new-mail' | 'calendar' | 'chat'
 
 /** The kinds of notifications, in the order that the configuration window shows them. */
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = ['new-mail', 'calendar', 'chat']
-
-/** The names of the notification switches on screen. */
-export const NOTIFICATION_KIND_NAMES: Readonly<Record<NotificationKind, string>> = {
-  'new-mail': 'New mail',
-  calendar: 'Calendar reminders',
-  chat: 'Chat messages'
-}
 
 export function isNotificationKind(value: unknown): value is NotificationKind {
   return value === 'new-mail' || value === 'calendar' || value === 'chat'
@@ -152,17 +139,6 @@ export interface QuietHours {
 export function defaultQuietHours(): QuietHours {
   return { enabled: false, start: '22:00', end: '07:00', days: [] }
 }
-
-/** The days of the week in the order that the configuration window shows them, Monday first. */
-export const WEEKDAYS: readonly { day: number; name: string; short: string }[] = [
-  { day: 1, name: 'Monday', short: 'Mon' },
-  { day: 2, name: 'Tuesday', short: 'Tue' },
-  { day: 3, name: 'Wednesday', short: 'Wed' },
-  { day: 4, name: 'Thursday', short: 'Thu' },
-  { day: 5, name: 'Friday', short: 'Fri' },
-  { day: 6, name: 'Saturday', short: 'Sat' },
-  { day: 0, name: 'Sunday', short: 'Sun' }
-]
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
 
@@ -240,13 +216,6 @@ export const BACKGROUND_LOADING_VALUES: readonly BackgroundLoading[] = [
   'selected-account-only'
 ]
 
-/** The names of the values of "Background loading" on screen. */
-export const BACKGROUND_LOADING_NAMES: Readonly<Record<BackgroundLoading, string>> = {
-  everything: 'Everything',
-  'calendars-only': 'Calendars only',
-  'selected-account-only': 'Selected account only'
-}
-
 export function isBackgroundLoading(value: unknown): value is BackgroundLoading {
   return (BACKGROUND_LOADING_VALUES as readonly unknown[]).includes(value)
 }
@@ -292,6 +261,8 @@ export interface AccountState {
   notifications: NotificationSwitches
   /** The quiet hours of the account. */
   quietHours: QuietHours
+  /** The Google apps of the account whose page stopped, and why. */
+  pageProblems: Partial<Record<GoogleApp, PageProblem>>
 }
 
 /** The state that the screens of Shifted show. */
@@ -397,6 +368,11 @@ export interface ShiftedApi {
   selectAccount(accountId: string): void
   /** Show this Google app of the selected account in the content area. */
   selectGoogleApp(googleApp: GoogleApp): void
+  /**
+   * Reload the Google app in the content area, as Cmd+R does. The "Reload" button of the
+   * panel "This page stopped." uses it.
+   */
+  reloadGoogleApp(): void
   /** Move the account to this place in the sidebar. The first place is 0. */
   moveAccount(accountId: string, toIndex: number): void
   /** Open the context menu of the account. */
@@ -477,6 +453,26 @@ export interface ShiftedApi {
   confirmImport(): void
   /** The import window only: close it, and change nothing. */
   cancelImport(): void
+  /** The "Memory use" window only: the memory of each Google app of each account now. */
+  getMemoryUse(): Promise<MemoryUse>
+}
+
+/** The memory of one Google app of one account, in the "Memory use" window. */
+export interface MemoryUseRow {
+  /** The name of the account: its nickname, or its address. */
+  accountName: string
+  googleApp: GoogleApp
+  /** The memory of its processes in kilobytes, or `null` when the Google app is asleep. */
+  kilobytes: number | null
+}
+
+/** What the "Memory use" window shows, from `app.getAppMetrics()`. */
+export interface MemoryUse {
+  rows: MemoryUseRow[]
+  /** The memory of every other process of Shifted: the main process, the GPU, the screens. */
+  otherKilobytes: number
+  /** The memory of all processes of Shifted. */
+  totalKilobytes: number
 }
 
 /** The result of "Export configuration…". */
@@ -527,6 +523,7 @@ export const IpcChannel = {
   addAccount: 'shifted:add-account',
   selectAccount: 'shifted:select-account',
   selectGoogleApp: 'shifted:select-google-app',
+  reloadGoogleApp: 'shifted:reload-google-app',
   moveAccount: 'shifted:move-account',
   showAccountMenu: 'shifted:show-account-menu',
   removeAccount: 'shifted:remove-account',
@@ -559,7 +556,8 @@ export const IpcChannel = {
   chooseImportFile: 'shifted:choose-import-file',
   readImportText: 'shifted:read-import-text',
   confirmImport: 'shifted:confirm-import',
-  cancelImport: 'shifted:cancel-import'
+  cancelImport: 'shifted:cancel-import',
+  getMemoryUse: 'shifted:get-memory-use'
 } as const
 
 /** The URL hash of the screen at the top of the sign-in window. */
@@ -573,3 +571,6 @@ export const MAILTO_PICKER_HASH = 'mailto-picker'
 
 /** The URL hash of the import window. */
 export const IMPORT_WINDOW_HASH = 'import'
+
+/** The URL hash of the "Memory use" window. */
+export const MEMORY_WINDOW_HASH = 'memory'

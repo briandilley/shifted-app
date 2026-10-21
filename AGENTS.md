@@ -30,6 +30,7 @@ src/main/google-urls.ts   every Google URL, and nothing else
 src/main/user-agent.ts    the user agent of Shifted
 src/preload/              preload scripts
 src/renderer/             the React screens of Shifted
+src/renderer/strings.ts   every English text of the React screens
 src/shared/               code that the main process and the renderer share
 test/unit/                Vitest tests
 test/e2e/                 Playwright tests
@@ -43,6 +44,8 @@ docs/spec/                read-only copy of the spec repo
 docs/decisions.md         choices made where the spec is silent
 build/                    build resources for electron-builder (icon)
 resources/                files that ship with the app (window icon)
+.github/workflows/        the tests on macOS, Windows, and Linux (GitHub Actions)
+docs/security-review.md   the result of the security review of phase 09
 ```
 
 ## Test mode

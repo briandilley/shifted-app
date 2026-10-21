@@ -5,6 +5,7 @@
 import type { WebContents, WebPreferences } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { CrashCounter, isCrash } from './page-problems'
 
 /** The web preferences of every screen of Shifted. */
 export function shiftedScreenWebPreferences(): WebPreferences {
@@ -17,12 +18,24 @@ export function shiftedScreenWebPreferences(): WebPreferences {
   }
 }
 
-/** The screens of Shifted open no windows and never navigate away from their own page. */
+/** The crashes of the screens of Shifted, by the id of their web contents. */
+const screenCrashes = new CrashCounter()
+
+/**
+ * The screens of Shifted open no windows and never navigate away from their own page. A
+ * screen that crashed reloads on its own, at most 2 times in 5 minutes.
+ */
 export function lockShiftedScreen(contents: WebContents): void {
   contents.setWindowOpenHandler(() => ({ action: 'deny' }))
   contents.on('will-navigate', (event) => {
     event.preventDefault()
   })
+  const key = String(contents.id)
+  contents.on('render-process-gone', (_event, details) => {
+    if (contents.isDestroyed() || !isCrash(details.reason)) return
+    if (screenCrashes.record(key) === 'reload') contents.reload()
+  })
+  contents.once('destroyed', () => screenCrashes.forget(key))
 }
 
 /**

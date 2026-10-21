@@ -6,6 +6,7 @@
 import { dialog, type BrowserWindow, type WebContents } from 'electron'
 import {
   findAccountColor,
+  GOOGLE_APPS,
   IpcChannel,
   MAX_NICKNAME_LENGTH,
   type AccountState,
@@ -15,6 +16,7 @@ import {
   type GoogleApp,
   type ImportPreview,
   type NotificationKind,
+  type PageProblem,
   type PermissionAnswer,
   type QuietHours,
   type ShiftedState,
@@ -47,8 +49,10 @@ import { findProfilePhotoUrl, readInboxCount } from './gmail-page'
 import { FEED_LABELS, isProfilePhotoUrl } from './google-urls'
 import type { LinkHandlers } from './link-handlers'
 import { setOpenAtLogin } from './login-item'
+import type { GoogleAppProcesses } from './memory-use'
 import { NewMailTracker } from './new-mail'
 import { isSnoozed, snoozeFor } from './notification-rules'
+import { CrashCounter } from './page-problems'
 import type { ProfilePhotos } from './profile-photos'
 import type { ScreenPicker } from './screen-picker'
 import { sessionGet } from './session-fetch'
@@ -81,6 +85,23 @@ export type NewMailListener = (accountId: string, entries: FeedEntry[]) => void
 /** The longest wait that `setTimeout` allows, about 24 days. */
 const MAX_TIMER_MS = 2 ** 31 - 1
 
+/** The key of one Google app of one account, for the maps of page problems and crashes. */
+function pageKey(accountId: string, googleApp: GoogleApp): string {
+  return `${accountId} ${googleApp}`
+}
+
+/** The IDs of the processes of a page and of the frames in it. */
+function processIds(contents: WebContents): number[] {
+  if (contents.isDestroyed() || contents.isCrashed()) return []
+  const ids = new Set<number>([contents.getOSProcessId()])
+  try {
+    for (const frame of contents.mainFrame.framesInSubtree) ids.add(frame.osProcessId)
+  } catch {
+    // The page went away during the count.
+  }
+  return [...ids].filter((id) => id > 0)
+}
+
 /** The result of the last reads of the feed of one account. */
 interface UnreadState {
   /** The count of the last good read, or `null` before the first one. */
@@ -99,6 +120,10 @@ export class Accounts {
   private readonly signOuts = new Map<string, Promise<void>>()
   private readonly photoLookups = new Set<string>()
   private readonly unread = new Map<string, UnreadState>()
+  /** The Google apps whose page stopped, by `pageKey`. The content area shows a panel. */
+  private readonly pageProblems = new Map<string, PageProblem>()
+  /** The crashes of each Google app, for the rule "3 crashes in 5 minutes". */
+  private readonly crashes = new CrashCounter()
   /** The accounts whose automatic choice of feed runs now. */
   private readonly feedChoices = new Set<string>()
   private readonly poller = new UnreadPoller(
@@ -387,7 +412,10 @@ export class Accounts {
     this.mainWindow = window
     const views = new AccountViews(window, {
       links: this.links,
-      onGmailLoaded: (accountId, gmail) => this.gmailLoaded(accountId, gmail)
+      onGmailLoaded: (accountId, gmail) => this.gmailLoaded(accountId, gmail),
+      onPageProblem: (accountId, googleApp, problem) =>
+        this.pageProblem(accountId, googleApp, problem),
+      onPageLoadStarted: (accountId, googleApp) => this.forgetPageProblem(accountId, googleApp)
     })
     this.views = views
     window.on('closed', () => {
@@ -469,6 +497,68 @@ export class Accounts {
     if (!account || this.status.get(account.id) !== 'signed-in') return
     const contents = this.views?.get(account.id, account.lastGoogleApp)?.webContents
     if (contents && !contents.isDestroyed()) contents.reload()
+  }
+
+  /**
+   * The page of a Google app stopped. The content area shows a panel in its place. A page
+   * that crashed reloads on its own, unless it crashed 3 times in 5 minutes: then Shifted
+   * waits for the "Reload" button. A certificate error never reloads on its own.
+   */
+  private pageProblem(accountId: string, googleApp: GoogleApp, problem: PageProblem): void {
+    if (!this.findAccount(accountId)) return
+    const key = pageKey(accountId, googleApp)
+    this.pageProblems.set(key, problem)
+    this.updateViews()
+    this.publish()
+    if (problem === 'crashed' && this.crashes.record(key) === 'reload') {
+      this.views?.reloadPage(accountId, googleApp)
+    }
+  }
+
+  /** The page of a Google app loads again, or its view closed: the panel goes away. */
+  private forgetPageProblem(accountId: string, googleApp: GoogleApp): void {
+    if (!this.pageProblems.delete(pageKey(accountId, googleApp))) return
+    this.updateViews()
+    this.publish()
+  }
+
+  /** Forget the page problems and the crashes of every Google app of the account. */
+  private forgetPageProblems(accountId: string): void {
+    for (const googleApp of GOOGLE_APPS) {
+      this.pageProblems.delete(pageKey(accountId, googleApp))
+      this.crashes.forget(pageKey(accountId, googleApp))
+    }
+  }
+
+  /**
+   * The computer is online again: read every feed at once, so that the badges come back,
+   * and reload each Google app whose page did not load while the computer was offline.
+   */
+  networkBack(): void {
+    for (const account of this.config.accounts) this.poller.readNow(account.id)
+    this.views?.reloadFailedLoads()
+  }
+
+  /**
+   * The processes of each Google app of each account, in the order of the sidebar, for
+   * the "Memory use" window. A child window shows a Gmail pop-out, so its processes count
+   * for Gmail. A Google app with no view is asleep (`processIds` is `null`).
+   */
+  googleAppProcesses(): GoogleAppProcesses[] {
+    return this.config.accounts.flatMap((account) =>
+      GOOGLE_APPS.map((googleApp): GoogleAppProcesses => {
+        const view = this.views?.get(account.id, googleApp)
+        const accountName = account.nickname || account.email || 'New account'
+        if (!view) return { accountName, googleApp, processIds: null }
+        const ids = processIds(view.webContents)
+        if (googleApp === 'gmail') {
+          for (const contents of this.childWindows.contentsOf(account.id)) {
+            ids.push(...processIds(contents))
+          }
+        }
+        return { accountName, googleApp, processIds: [...new Set(ids)] }
+      })
+    )
   }
 
   /** Show this Google app of the selected account, and remember it for the account. */
@@ -686,6 +776,7 @@ export class Accounts {
     this.closeSignInWindow(accountId)
     this.childWindows.close(accountId)
     this.views?.close(accountId)
+    this.forgetPageProblems(accountId)
     await this.signOuts.get(accountId)?.catch(ignore)
 
     // 2. and 3. Clear the storage data of the session, and delete its partition folder.
@@ -727,6 +818,7 @@ export class Accounts {
     this.closeSignInWindow(accountId)
     this.childWindows.close(accountId)
     this.views?.close(accountId)
+    this.forgetPageProblems(accountId)
     this.signedInOnce.add(accountId)
     this.setStatus(accountId, 'signed-out')
     this.newMail.forget(accountId)
@@ -1017,7 +1109,9 @@ export class Accounts {
       views.show(null)
     } else {
       views.ensure(account.id, account.lastGoogleApp)
-      views.show({ accountId: account.id, googleApp: account.lastGoogleApp })
+      // A page that stopped stays hidden. The content area shows a panel in its place.
+      const stopped = this.pageProblems.has(pageKey(account.id, account.lastGoogleApp))
+      views.show(stopped ? null : { accountId: account.id, googleApp: account.lastGoogleApp })
     }
     this.applyBackgroundLoading(views)
   }
@@ -1048,7 +1142,10 @@ export class Accounts {
     const views = this.views
     if (!views) return true
     if (this.childWindows.hasWindows(app.accountId)) return false
-    return views.sleep(app.accountId, app.googleApp)
+    const asleep = views.sleep(app.accountId, app.googleApp)
+    // A Google app that is asleep loads a new page when it wakes.
+    if (asleep && this.pageProblems.delete(pageKey(app.accountId, app.googleApp))) this.publish()
+    return asleep
   }
 
   private publish(): void {
@@ -1074,7 +1171,13 @@ export class Accounts {
       unreadFeed: feedToRead(account.unreadCountSource, account.automaticFeed),
       automaticFeedLearned: account.automaticFeed !== null,
       notifications: { ...account.notifications },
-      quietHours: { ...account.quietHours, days: [...account.quietHours.days] }
+      quietHours: { ...account.quietHours, days: [...account.quietHours.days] },
+      pageProblems: Object.fromEntries(
+        GOOGLE_APPS.flatMap((googleApp) => {
+          const problem = this.pageProblems.get(pageKey(account.id, googleApp))
+          return problem ? [[googleApp, problem]] : []
+        })
+      )
     }
   }
 

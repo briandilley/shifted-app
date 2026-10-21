@@ -1,0 +1,6 @@
+# Keep LF line breaks on every platform. Windows checkouts would otherwise get CRLF, and
+# the unit tests that read docs/spec/DESIGN.md, and Prettier, expect LF.
+* text=auto eol=lf
+*.png binary
+*.icns binary
+*.ico binary

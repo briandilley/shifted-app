@@ -7,10 +7,11 @@
  * a Google app that is asleep has no view, and its view is made again when it is needed.
  */
 import { WebContentsView, type BrowserWindow, type WebContents } from 'electron'
-import { GOOGLE_APPS, type GoogleApp, type ViewBounds } from '../shared/api'
+import { GOOGLE_APPS, type GoogleApp, type PageProblem, type ViewBounds } from '../shared/api'
 import { accountSession, googlePageWebPreferences } from './account-session'
 import { calendarUrl, gmailUrl, isGmailUrl } from './google-urls'
 import { applyLinkRules, type LinkHandlers } from './link-handlers'
+import { isCertificateError, isConnectionError, isCrash } from './page-problems'
 import { GOOGLE_VIEW_RADIUS } from './window-frame'
 
 export interface AccountViewHandlers {
@@ -18,6 +19,10 @@ export interface AccountViewHandlers {
   links: LinkHandlers
   /** Gmail of the account finished loading. */
   onGmailLoaded(accountId: string, gmail: WebContents): void
+  /** The page of a Google app stopped: it crashed, or it has a certificate error. */
+  onPageProblem(accountId: string, googleApp: GoogleApp, problem: PageProblem): void
+  /** A Google app starts to load a new page, for example after "Reload". */
+  onPageLoadStarted(accountId: string, googleApp: GoogleApp): void
 }
 
 /** The Google app that the content area shows: one Google app of one account. */
@@ -39,6 +44,8 @@ export class AccountViews {
   private readonly views = new Map<string, Map<GoogleApp, WebContentsView>>()
   private bounds: ViewBounds = { x: 0, y: 0, width: 0, height: 0 }
   private shown: ShownGoogleApp | null = null
+  /** The views whose last page did not load, because the network did not answer. */
+  private readonly failedLoads = new Set<WebContentsView>()
 
   constructor(
     private readonly window: BrowserWindow,
@@ -88,6 +95,23 @@ export class AccountViews {
     for (const googleApp of GOOGLE_APPS) {
       this.get(accountId, googleApp)?.webContents.loadURL(googleAppUrl(googleApp)).catch(ignore)
     }
+  }
+
+  /** Reload the page of a Google app, for example after a crash. */
+  reloadPage(accountId: string, googleApp: GoogleApp): void {
+    const contents = this.get(accountId, googleApp)?.webContents
+    if (contents && !contents.isDestroyed()) contents.reload()
+  }
+
+  /**
+   * Reload each view whose last page did not load because the network did not answer.
+   * Shifted calls it when the computer is online again.
+   */
+  reloadFailedLoads(): void {
+    for (const view of this.failedLoads) {
+      if (!view.webContents.isDestroyed()) view.webContents.reload()
+    }
+    this.failedLoads.clear()
   }
 
   /** The Google apps that have a view now. */
@@ -170,6 +194,26 @@ export class AccountViews {
     // Google's sign-in page, which never shows in the content area.
     applyLinkRules(page, accountId, googleApp, this.handlers.links)
 
+    // A page that stopped: the content area shows "This page stopped." or the certificate
+    // message in its place. See "Failure states" in `docs/spec/PRODUCT.md`.
+    page.on('render-process-gone', (_event, details) => {
+      if (page.isDestroyed() || !isCrash(details.reason)) return
+      this.handlers.onPageProblem(accountId, googleApp, 'crashed')
+    })
+    page.on('did-fail-load', (_event, errorCode, _description, _url, isMainFrame) => {
+      if (!isMainFrame) return
+      if (isCertificateError(errorCode)) {
+        this.handlers.onPageProblem(accountId, googleApp, 'certificate-error')
+      } else if (isConnectionError(errorCode)) {
+        this.failedLoads.add(view)
+      }
+    })
+    page.on('did-start-navigation', (details) => {
+      if (!details.isMainFrame || details.isSameDocument) return
+      this.failedLoads.delete(view)
+      this.handlers.onPageLoadStarted(accountId, googleApp)
+    })
+
     if (googleApp === 'gmail') {
       page.on('did-finish-load', () => {
         if (isGmailUrl(page.getURL())) this.handlers.onGmailLoaded(accountId, page)
@@ -184,6 +228,7 @@ export class AccountViews {
   }
 
   private closeView(view: WebContentsView): void {
+    this.failedLoads.delete(view)
     if (!this.window.isDestroyed()) this.window.contentView.removeChildView(view)
     if (!view.webContents.isDestroyed()) view.webContents.close()
   }

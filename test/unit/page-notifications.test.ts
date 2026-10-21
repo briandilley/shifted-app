@@ -58,7 +58,8 @@ describe('the snooze menus', () => {
   const actions = {
     runShortcut: () => undefined,
     snooze: () => undefined,
-    stopSnooze: () => undefined
+    stopSnooze: () => undefined,
+    showMemoryUse: () => undefined
   }
 
   it('have the four choices and "Stop snooze", which is off when no snooze runs', () => {

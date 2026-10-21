@@ -9,8 +9,10 @@ import { BrowserWindow, WebContentsView, type Session } from 'electron'
 import icon from '../../resources/icon.png?asset'
 import { SIGN_IN_SCREEN_HASH, type ViewBounds } from '../shared/api'
 import { googlePageWebPreferences } from './account-session'
+import { showCertificateErrors } from './certificate-errors'
 import { signInUrl } from './google-urls'
 import { routeNavigation } from './link-rules'
+import { CrashCounter, isCrash } from './page-problems'
 import { isSignInFinished } from './sign-in'
 import {
   loadShiftedScreen,
@@ -37,6 +39,8 @@ export class SignInWindow {
   readonly window: BrowserWindow
   readonly view: WebContentsView
   private finished = false
+  /** The crashes of the sign-in page in this window. */
+  private readonly crashes = new CrashCounter()
 
   /**
    * @param address The address to fill in on Google's sign-in page, for an account that
@@ -78,6 +82,15 @@ export class SignInWindow {
         event.preventDefault()
       }
     })
+
+    // A sign-in page that crashed reloads on its own. After 3 crashes in 5 minutes, the
+    // window closes, as if the person closed it.
+    page.on('render-process-gone', (_event, details) => {
+      if (page.isDestroyed() || !isCrash(details.reason)) return
+      if (this.crashes.record('sign-in') === 'reload') page.reload()
+      else this.close()
+    })
+    showCertificateErrors(page)
 
     page.on('did-navigate', (_event, url) => {
       if (this.finished || !isSignInFinished(url)) return
