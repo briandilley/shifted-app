@@ -1,8 +1,8 @@
-# Prompt 11 (optional): Touch ID passkeys on macOS
+# Prompt 12 (optional): Touch ID passkeys on macOS
 
 You are a coding agent. You try to add Touch ID passkeys to Shifted on macOS. Read `AGENTS.md` first and follow its rules.
 
-This prompt is optional. It starts with a prototype, because Google can refuse the idea. Prompt 10 must be done first, because a passkey in the macOS keychain needs a signed build.
+This prompt is optional. It starts with a prototype, because Google can refuse the idea. Prompt 11 must be done first, because a passkey in the macOS keychain needs a signed build.
 
 ## Goal
 
@@ -60,4 +60,4 @@ Electron 45 added `app.configureWebAuthn({ touchID })` on macOS. A passkey made 
 
 ## When you finish
 
-If Google allowed it, merge the branch and commit with the message `Phase 11: Touch ID passkeys`. In both cases, tell the person the result.
+If Google allowed it, merge the branch and commit with the message `Phase 12: Touch ID passkeys`. In both cases, tell the person the result.

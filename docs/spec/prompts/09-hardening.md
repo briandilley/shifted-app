@@ -1,4 +1,4 @@
-# Prompt 08: Hardening
+# Prompt 09: Hardening
 
 You are a coding agent. You continue the build of Shifted in this repo. Read `AGENTS.md` first and follow its rules.
 
@@ -23,7 +23,8 @@ At the end of this phase, Shifted meets every rule of the "Security" section. It
 3. Handle the `certificate-error` event of the app. Never call its callback with `true`.
 4. Make sure that no remote debugging port opens in a production build.
 5. Search the code for `nodeIntegration: true`, `contextIsolation: false`, `sandbox: false`, and `webSecurity: false`. Remove each one that you find.
-6. Write the result of the review as a table in `docs/security-review.md`: rule, file, and status.
+6. Treat the import of prompt 08 as untrusted input. Make sure that it has the size limit, that it checks each value, and that it takes no file path or URL from the import.
+7. Write the result of the review as a table in `docs/security-review.md`: rule, file, and status.
 
 ### 2. Crashes
 
@@ -62,7 +63,7 @@ At the end of this phase, Shifted meets every rule of the "Security" section. It
 
 ## Out of scope
 
-- Signed installers. Prompt 10 adds them.
+- Signed installers. Prompt 11 adds them.
 
 ## Automated tests
 
@@ -81,4 +82,4 @@ At the end of this phase, Shifted meets every rule of the "Security" section. It
 
 ## When you finish
 
-Commit with the message `Phase 08: hardening`. Tell the person which manual tests to do. List any choice that you wrote in `docs/decisions.md`.
+Commit with the message `Phase 09: hardening`. Tell the person which manual tests to do. List any choice that you wrote in `docs/decisions.md`.

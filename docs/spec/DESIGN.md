@@ -139,4 +139,4 @@ All sizes are in points.
 ## Contrast
 
 - All text has a contrast of at least 4.5 to 1 against its background, in both modes. This includes `--text-secondary` on all 16 backdrops in the table.
-- The values in this file meet that rule. Prompt 08 tests it.
+- The values in this file meet that rule. Prompt 09 tests it.

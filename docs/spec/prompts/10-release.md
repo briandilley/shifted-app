@@ -1,4 +1,4 @@
-# Prompt 09: Release
+# Prompt 10: Release
 
 You are a coding agent. You finish version 1 of Shifted in this repo. Read `AGENTS.md` first and follow its rules.
 
@@ -11,7 +11,7 @@ At the end of this phase, version 1 is complete. Every rule of the spec has code
 1. `AGENTS.md`
 2. All of `docs/spec/PRODUCT.md`
 3. `docs/decisions.md`
-4. The "Manual tests" sections of every prompt in `docs/spec/prompts/`, from 01 to 08.
+4. The "Manual tests" sections of every prompt in `docs/spec/prompts/`, from 01 to 09.
 
 ## Scope
 
@@ -25,7 +25,7 @@ At the end of this phase, version 1 is complete. Every rule of the spec has code
 
 ### 2. One manual test list
 
-1. Collect the manual tests of prompts 01 to 08 into one list in `docs/manual-tests.md`.
+1. Collect the manual tests of prompts 01 to 09 into one list in `docs/manual-tests.md`.
 2. Remove the duplicates. Put them in the order that a person does them on a fresh computer.
 3. Add a column "Result" that the person fills in.
 
@@ -53,7 +53,7 @@ Write `README.md` with these sections:
 
 ## Out of scope
 
-- Signed installers and auto-update. Prompt 10 adds them.
+- Signed installers and auto-update. Prompt 11 adds them.
 
 ## Automated tests
 
@@ -67,4 +67,4 @@ Write `README.md` with these sections:
 
 ## When you finish
 
-Commit with the message `Phase 09: release`. Tag the commit `v1.0.0`. Tell the person which manual tests to do.
+Commit with the message `Phase 10: release`. Tag the commit `v1.0.0`. Tell the person which manual tests to do.

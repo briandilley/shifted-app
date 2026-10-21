@@ -1,4 +1,4 @@
-# Prompt 10 (optional): Installers and updates
+# Prompt 11 (optional): Installers and updates
 
 You are a coding agent. You add signed installers and auto-update to Shifted in this repo. Read `AGENTS.md` first and follow its rules.
 
@@ -72,4 +72,4 @@ Sign the installer and the app with the certificate or with Azure Trusted Signin
 
 ## When you finish
 
-Commit with the message `Phase 10: installers and updates`. Tell the person which manual tests to do.
+Commit with the message `Phase 11: installers and updates`. Tell the person which manual tests to do.

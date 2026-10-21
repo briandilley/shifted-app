@@ -1,6 +1,6 @@
 # Build all: the master prompt
 
-You are a coding agent. You will build version 1 of Shifted, a desktop app that keeps several Gmail accounts in one window. You do this by running the phase prompts 00 to 09, one after the other, with no stops for the person.
+You are a coding agent. You will build version 1 of Shifted, a desktop app that keeps several Gmail accounts in one window. You do this by running the phase prompts 00 to 10, one after the other, with no stops for the person.
 
 The current folder is the code repo. The spec repo is a clone of `https://github.com/briandilley/shifted`. This file is in its `prompts/` folder. In this prompt, `<spec>` means the path of that clone.
 
@@ -40,8 +40,9 @@ The phases are the files in `<spec>/prompts/`, in this order:
 | 05 | `05-notifications.md` |
 | 06 | `06-mailto.md` |
 | 07 | `07-shortcuts-and-background.md` |
-| 08 | `08-hardening.md` |
-| 09 | `09-release.md` |
+| 08 | `08-export-and-import.md` |
+| 09 | `09-hardening.md` |
+| 10 | `10-release.md` |
 
 Phase 00 copies the prompts into `docs/spec/prompts/` of the code repo. From phase 01 on, use the copies in `docs/spec/prompts/`.
 
@@ -64,7 +65,7 @@ commit hash, the result of the automated tests, and the choices that you
 wrote in docs/decisions.md.
 ```
 
-For the phases 01 to 09, send this message. Put the real file name in place of `<prompt file>`.
+For the phases 01 to 10, send this message. Put the real file name in place of `<prompt file>`.
 
 ```text
 You are in the code repo at <code repo>. Read AGENTS.md, then read
@@ -100,10 +101,10 @@ The status is `todo`, `running`, `done`, or `stopped`. In "Notes", write one lin
 
 ## Step 4: Finish
 
-After phase 09 is `done`:
+After phase 10 is `done`:
 
 1. If you made a temporary clone of the spec repo in step 1, delete it.
 2. Tell the person that the build is complete.
 3. Tell the person to start Shifted with `npm run dev` and to do every row of `docs/manual-tests.md`.
 4. Give the person a short list of the choices in `docs/decisions.md`.
-5. Tell the person that the prompts 10 (installers and updates) and 11 (Touch ID passkeys) are optional. They need accounts and certificates of the person. Run them only at the request of the person.
+5. Tell the person that the prompts 11 (installers and updates) and 12 (Touch ID passkeys) are optional. They need accounts and certificates of the person. Run them only at the request of the person.

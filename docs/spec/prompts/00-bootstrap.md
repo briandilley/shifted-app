@@ -128,7 +128,7 @@ Make these commands work:
 
 - Accounts, sessions, and sign-in. Prompt 01 adds them.
 - The sidebar and the tab bar. Prompt 02 adds them.
-- Installers and code signing. Prompt 10 adds them.
+- Installers and code signing. Prompt 11 adds them.
 
 ## Automated tests
 

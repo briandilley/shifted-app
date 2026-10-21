@@ -35,6 +35,7 @@ Version 1 has these features, in addition to the sidebar, the tab bar, and addin
 - Notifications: desktop notifications for new mail and for Calendar reminders, in every account.
 - `mailto:` handler: Shifted can be the default email app of the computer.
 - Keyboard shortcuts: jump to an account, move to the previous or next account, and switch between the Gmail and Calendar tabs.
+- Export and import: move the configuration to another computer, as a file or by email.
 
 ## Supported accounts
 
@@ -242,6 +243,7 @@ General page:
 - Ask where to save each file (off by default).
 - Make Shifted the default email app.
 - Clear the "Always use this account" choice of the account picker.
+- `Export configuration…`, `Email it to myself`, and `Import configuration…`. The section "Move to another computer" tells what they do.
 
 Notifications page:
 
@@ -259,6 +261,24 @@ One page for each account:
 
 Shifted saves the configuration in one JSON file in its app data folder. The sessions and the saved profile photos are in the same folder.
 
+## Move to another computer
+
+You can move the configuration of Shifted to another computer. The exported configuration never has sign-ins: no cookies, no passwords, and no session data. On the new computer, you sign in to each account again.
+
+The General page of the configuration window has three buttons:
+
+- `Export configuration…` saves the exported configuration as a file. You pick the folder. The file name is `Shifted configuration <date>.json`.
+- `Email it to myself` opens a new message in Gmail of the selected account, in the main window. The message goes to the address of that account, with the subject "Shifted configuration". The body has one line of help and the exported configuration as a block of text. You click Send.
+- `Import configuration…` takes a file or the pasted text of the message. It accepts both forms.
+
+Gmail cannot attach a file from a link. So the message has the text form, and not the file.
+
+The main window with no accounts also shows `Import configuration…`, next to `Add account`.
+
+Before the import changes anything, Shifted shows what will change and asks you to confirm. If Shifted cannot read the file or the text, it changes nothing and tells you why.
+
+After the import, each new account shows a `Sign in` button in place of Gmail. The sign-in window starts with the address of the account already filled in.
+
 ## Shifted's own screens
 
 - The screens of Shifted are in English only in version 1. Gmail and Calendar keep the language of each Google account.
@@ -275,11 +295,12 @@ Shifted saves the configuration in one JSON file in its app data folder. The ses
 
 - Shifted has no server of its own.
 - Shifted has no sign-up, no license key, no telemetry, no crash reporting, and no configuration sync.
+- Shifted writes an exported configuration only after a click on `Export configuration…`. `Email it to myself` only opens a new message. You send it, or you discard it.
 - All data of Shifted stays on the computer: the account list, the configuration, and the sessions.
 - Shifted sends network traffic only to Google's own pages. During sign-in, it also goes to the pages of a company identity provider. A build with auto-update also asks for updates.
 
 ## Distribution
 
 - The main prompts build a version of Shifted that you run from source on your own computer.
-- The last prompt is optional. It adds signed installers and auto-update for macOS, Windows, and Linux.
-- The optional prompt needs an Apple Developer account for macOS and a code-signing certificate for Windows.
+- An optional prompt adds signed installers and auto-update for macOS, Windows, and Linux.
+- That prompt needs an Apple Developer account for macOS and a code-signing certificate for Windows.

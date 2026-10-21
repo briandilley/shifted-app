@@ -76,6 +76,10 @@ _Avoid_: settings, preferences, options
 The Shifted window where you change the configuration. Its title on screen is `Settings`, to match the operating systems.
 _Avoid_: settings window, preferences window
 
+**Exported configuration**:
+A copy of the configuration, without sign-ins, that you move to another computer. It is a file or a block of text in an email.
+_Avoid_: backup, settings file, profile, sync
+
 **Default browser**:
 The web browser that the operating system opens for web links, for example Chrome, Safari, Edge, or Firefox.
 _Avoid_: external browser, system browser
