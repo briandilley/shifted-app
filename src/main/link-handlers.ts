@@ -50,8 +50,8 @@ function followLink(
       openInDefaultBrowser(url)
       return
     case 'mailto':
-      // Prompt 06 adds the account picker for links from other apps. A `mailto:` link in
-      // a page of an account opens a new message in the Gmail of the same account.
+      // A `mailto:` link in a page of an account opens a new message in the Gmail of the
+      // same account, with no account picker. Links from other apps go to `mailto-links.ts`.
       handlers.showInGoogleApp(accountId, 'gmail', gmailComposeUrl(url))
       return
     case 'stay':

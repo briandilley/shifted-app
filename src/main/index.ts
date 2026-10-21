@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import type { Snooze } from '../shared/api'
+import { AccountPicker } from './account-picker'
 import { Accounts } from './accounts'
 import { AppBadge } from './app-badge'
 import { buildSnoozeMenu, setAppMenu, type AppMenuActions } from './app-menu'
@@ -10,6 +11,8 @@ import { ConfigStore } from './config'
 import { gmailMessageUrl, gmailUrl } from './google-urls'
 import { registerIpc } from './ipc'
 import { newMailNotifications } from './new-mail'
+import { findMailtoArgument, isMailtoUrl } from './mailto'
+import { MailtoLinks } from './mailto-links'
 import { iconFromDataUrl, Notifier } from './notifications'
 import { registerPageNotifications } from './page-notifications'
 import { ProfilePhotos } from './profile-photos'
@@ -34,6 +37,44 @@ if (userDataDir) {
 
 // The user agent must be set before any window opens.
 applyUserAgent(app)
+
+// One copy of Shifted at a time. A second copy gives its command line to the first copy
+// (the `second-instance` event) and quits. The lock belongs to the user data folder, so
+// it must come after the folder is set.
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) {
+  app.quit()
+}
+
+/** Handles `mailto:` links from other apps after Shifted is ready. */
+let mailtoLinks: MailtoLinks | null = null
+/** The `mailto:` link that came before Shifted was ready. The newest link wins. */
+let pendingMailto: string | undefined
+/** Show the main window. Set when Shifted is ready. */
+let showMainWindow: (() => BrowserWindow | null) | null = null
+
+function receiveMailto(url: string): void {
+  if (mailtoLinks) mailtoLinks.open(url)
+  else pendingMailto = url
+}
+
+if (hasSingleInstanceLock) {
+  // macOS sends a link with `open-url`. Listen before `ready`, so that a link that starts
+  // Shifted is not lost.
+  app.on('open-url', (event, url) => {
+    if (!isMailtoUrl(url)) return
+    event.preventDefault()
+    receiveMailto(url)
+  })
+
+  // Windows and Linux give the link on the command line: at start, and from a second copy.
+  pendingMailto = findMailtoArgument(process.argv)
+  app.on('second-instance', (_event, commandLine) => {
+    const link = findMailtoArgument(commandLine)
+    if (link) receiveMailto(link)
+    else showMainWindow?.()
+  })
+}
 
 function createMainWindow(accounts: Accounts, badge: AppBadge): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -72,7 +113,7 @@ app.on('web-contents-created', (_event, contents) => {
   })
 })
 
-void app.whenReady().then(() => {
+function startShifted(): void {
   // Windows shows the notifications of an app only with an Application User Model ID.
   // In development, Electron's own executable stands for Shifted, as the Electron
   // documentation says.
@@ -97,7 +138,8 @@ void app.whenReady().then(() => {
     screenPicker
   )
   const settings = new SettingsWindow(accounts)
-  registerIpc(accounts, settings, screenPicker)
+  const accountPicker = new AccountPicker(accounts)
+  registerIpc(accounts, settings, screenPicker, accountPicker)
   // The app badge shows the sum of the unread counts of all accounts.
   const badge = new AppBadge()
   accounts.subscribe((state) => badge.update(appBadgeTotal(state.accounts)))
@@ -179,7 +221,32 @@ void app.whenReady().then(() => {
   })
 
   app.on('activate', ensureMainWindow)
-})
+
+  // `mailto:` links from other apps.
+  showMainWindow = (): BrowserWindow | null => {
+    ensureMainWindow()
+    const window =
+      BrowserWindow.getAllWindows().find((candidate) =>
+        accounts.isMainScreen(candidate.webContents)
+      ) ?? null
+    if (window) {
+      if (window.isMinimized()) window.restore()
+      window.show()
+      window.focus()
+    }
+    return window
+  }
+  mailtoLinks = new MailtoLinks(accounts, accountPicker, showMainWindow)
+  if (pendingMailto) {
+    const link = pendingMailto
+    pendingMailto = undefined
+    mailtoLinks.open(link)
+  }
+}
+
+if (hasSingleInstanceLock) {
+  void app.whenReady().then(startShifted)
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

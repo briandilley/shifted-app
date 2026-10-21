@@ -25,3 +25,9 @@ linux:
     - AppImage
   category: Network
 npmRebuild: false
+# Shifted can be the default email app. electron-builder declares the `mailto:` scheme in
+# the macOS Info.plist, the Linux desktop file, and the Windows installer.
+protocols:
+  - name: Email
+    schemes:
+      - mailto

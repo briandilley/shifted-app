@@ -299,6 +299,13 @@ export interface ShiftedState {
   general: GeneralConfig
   /** The snooze that runs now, or `null` when notifications are not snoozed. */
   snooze: Snooze | null
+  /** The account of "Always use this account" in the account picker, or `null`. */
+  mailtoDefaultAccountId: string | null
+  /**
+   * True after a `mailto:` link came from another app while Shifted had no accounts. The
+   * main window then says "Add an account first".
+   */
+  addAccountFirst: boolean
 }
 
 /** A rectangle in the window, in points, where a Google page shows. */
@@ -424,6 +431,34 @@ export interface ShiftedApi {
   getScreenSources(): Promise<ScreenPickerInfo>
   /** The screen picker only: share this screen or window. `null` shares nothing. */
   chooseScreenSource(sourceId: string | null): void
+  /** Forget the account of "Always use this account" of the account picker. */
+  clearMailtoDefault(): void
+  /** True when Shifted is the default email app of the computer now. */
+  isDefaultEmailApp(): Promise<boolean>
+  /**
+   * Make Shifted the default email app. On Windows, this opens the "Default apps" page of
+   * Windows. Gives the new answer of `isDefaultEmailApp`.
+   */
+  makeDefaultEmailApp(): Promise<boolean>
+  /** The account picker only: what it shows. */
+  getMailtoPicker(): Promise<MailtoPickerInfo>
+  /**
+   * The account picker only: calls the listener when a new `mailto:` link replaces the one
+   * that it shows. Returns a function that stops it.
+   */
+  onMailtoPickerChanged(listener: (info: MailtoPickerInfo) => void): () => void
+  /** The account picker only: open the new message in this account. */
+  chooseMailtoAccount(accountId: string, always: boolean): void
+  /** The account picker only: close it, and open no new message. */
+  cancelMailtoPicker(): void
+}
+
+/** What the account picker shows. */
+export interface MailtoPickerInfo {
+  /** The top line, for example "New message to bob@example.com". */
+  heading: string
+  /** The account that is selected when the picker opens. */
+  selectedAccountId: string | null
 }
 
 /** One screen or window that the screen picker lists. */
@@ -464,7 +499,14 @@ export const IpcChannel = {
   setQuietHours: 'shifted:set-quiet-hours',
   stopSnooze: 'shifted:stop-snooze',
   getScreenSources: 'shifted:get-screen-sources',
-  chooseScreenSource: 'shifted:choose-screen-source'
+  chooseScreenSource: 'shifted:choose-screen-source',
+  clearMailtoDefault: 'shifted:clear-mailto-default',
+  isDefaultEmailApp: 'shifted:is-default-email-app',
+  makeDefaultEmailApp: 'shifted:make-default-email-app',
+  getMailtoPicker: 'shifted:get-mailto-picker',
+  mailtoPickerChanged: 'shifted:mailto-picker-changed',
+  chooseMailtoAccount: 'shifted:choose-mailto-account',
+  cancelMailtoPicker: 'shifted:cancel-mailto-picker'
 } as const
 
 /** The URL hash of the screen at the top of the sign-in window. */
@@ -472,3 +514,6 @@ export const SIGN_IN_SCREEN_HASH = 'sign-in'
 
 /** The URL hash of the screen picker. */
 export const SCREEN_PICKER_HASH = 'screen-picker'
+
+/** The URL hash of the account picker. */
+export const MAILTO_PICKER_HASH = 'mailto-picker'

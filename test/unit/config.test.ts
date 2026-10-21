@@ -30,6 +30,7 @@ const ACCOUNT: AccountConfig = {
 }
 
 const GENERAL = { askWhereToSave: false }
+const MAILTO = { defaultAccountId: null, lastAccountId: null }
 
 describe('ConfigStore', () => {
   let dir: string
@@ -49,7 +50,8 @@ describe('ConfigStore', () => {
       version: CONFIG_VERSION,
       general: GENERAL,
       accounts: [],
-      snooze: null
+      snooze: null,
+      mailto: MAILTO
     })
     expect(existsSync(join(dir, 'config.broken.json'))).toBe(false)
   })
@@ -59,7 +61,8 @@ describe('ConfigStore', () => {
       version: CONFIG_VERSION,
       general: { askWhereToSave: true },
       accounts: [{ ...ACCOUNT, pagePermissions: { media: 'allow', 'clipboard-read': 'deny' } }],
-      snooze: { until: 1_800_000_000_000 }
+      snooze: { until: 1_800_000_000_000 },
+      mailto: { defaultAccountId: ACCOUNT.id, lastAccountId: ACCOUNT.id }
     }
     store.save(config)
     const json = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8')) as unknown
@@ -68,15 +71,33 @@ describe('ConfigStore', () => {
   })
 
   it('writes atomically and leaves no temporary file', () => {
-    store.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [ACCOUNT], snooze: null })
-    store.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [], snooze: null })
+    store.save({
+      version: CONFIG_VERSION,
+      general: GENERAL,
+      accounts: [ACCOUNT],
+      snooze: null,
+      mailto: MAILTO
+    })
+    store.save({
+      version: CONFIG_VERSION,
+      general: GENERAL,
+      accounts: [],
+      snooze: null,
+      mailto: MAILTO
+    })
     expect(readdirSync(dir)).toEqual(['config.json'])
     expect(store.load().accounts).toEqual([])
   })
 
   it('makes the folder if it does not exist', () => {
     const nested = new ConfigStore(join(dir, 'a', 'b'))
-    nested.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [ACCOUNT], snooze: null })
+    nested.save({
+      version: CONFIG_VERSION,
+      general: GENERAL,
+      accounts: [ACCOUNT],
+      snooze: null,
+      mailto: MAILTO
+    })
     expect(nested.load().accounts).toEqual([ACCOUNT])
   })
 
@@ -86,14 +107,16 @@ describe('ConfigStore', () => {
       version: CONFIG_VERSION,
       general: GENERAL,
       accounts: [],
-      snooze: null
+      snooze: null,
+      mailto: MAILTO
     })
     expect(readFileSync(join(dir, 'config.broken.json'), 'utf8')).toBe('{ this is not json')
     expect(JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'))).toEqual({
       version: 1,
       general: GENERAL,
       accounts: [],
-      snooze: null
+      snooze: null,
+      mailto: MAILTO
     })
   })
 
@@ -134,7 +157,8 @@ describe('parseConfig', () => {
       version: 1,
       general: GENERAL,
       accounts: [ACCOUNT],
-      snooze: null
+      snooze: null,
+      mailto: MAILTO
     })
   })
 
@@ -248,6 +272,31 @@ describe('the notification configuration', () => {
     expect(parseConfig(withAccount({ quietHours: { ...quiet, enabled: 1 } }))).toBeUndefined()
     expect(parseConfig({ version: 1, accounts: [], snooze: { until: 'later' } })).toBeUndefined()
     expect(parseConfig({ version: 1, accounts: [], snooze: 3 })).toBeUndefined()
+  })
+
+  it('reads a file from phase 05, with no account picker choices', () => {
+    expect(parseConfig({ version: 1, accounts: [ACCOUNT] })?.mailto).toEqual(MAILTO)
+  })
+
+  it('reads the account picker choices and forgets an account that is not there', () => {
+    const mailto = { defaultAccountId: ACCOUNT.id, lastAccountId: ACCOUNT.id }
+    expect(parseConfig({ version: 1, accounts: [ACCOUNT], mailto })?.mailto).toEqual(mailto)
+    const other = '5d1c9a0e-8f53-4b0a-a4a2-0e8a6f8b9c11'
+    expect(
+      parseConfig({
+        version: 1,
+        accounts: [ACCOUNT],
+        mailto: { defaultAccountId: other, lastAccountId: null }
+      })?.mailto
+    ).toEqual(MAILTO)
+  })
+
+  it('refuses wrong account picker choices', () => {
+    expect(parseConfig({ version: 1, accounts: [], mailto: 'yes' })).toBeUndefined()
+    expect(
+      parseConfig({ version: 1, accounts: [], mailto: { defaultAccountId: '../etc' } })
+    ).toBeUndefined()
+    expect(parseConfig({ version: 1, accounts: [], mailto: { lastAccountId: 3 } })).toBeUndefined()
   })
 })
 

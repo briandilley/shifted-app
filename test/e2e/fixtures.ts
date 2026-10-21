@@ -6,7 +6,9 @@ import {
   type Locator,
   type Page
 } from '@playwright/test'
+import { spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { FAKE_ADDRESS, startFakeGoogle, type FakeGoogleServer } from '../fake-google/server'
@@ -24,11 +26,8 @@ export interface ShiftedFixtures {
   mainWindow: Page
 }
 
-/** Start the built Shifted with the fake Google server and a user data folder. */
-export async function launchShifted(
-  fakeGoogle: FakeGoogleServer,
-  userDataDir: string
-): Promise<ElectronApplication> {
+/** The environment of Shifted in a test: the fake Google server and a user data folder. */
+function shiftedEnv(fakeGoogle: FakeGoogleServer, userDataDir: string): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value
@@ -37,7 +36,58 @@ export async function launchShifted(
   delete env['ELECTRON_RUN_AS_NODE']
   env['SHIFTED_TEST_SERVER'] = fakeGoogle.url
   env['SHIFTED_USER_DATA_DIR'] = userDataDir
-  return _electron.launch({ args: [APP_ROOT], cwd: APP_ROOT, env })
+  return env
+}
+
+/** Start the built Shifted with the fake Google server and a user data folder. */
+export async function launchShifted(
+  fakeGoogle: FakeGoogleServer,
+  userDataDir: string
+): Promise<ElectronApplication> {
+  return _electron.launch({
+    args: [APP_ROOT],
+    cwd: APP_ROOT,
+    env: shiftedEnv(fakeGoogle, userDataDir)
+  })
+}
+
+/**
+ * Start a second copy of Shifted with these command line arguments, as Windows and Linux
+ * do for a `mailto:` link. The second copy gives its command line to the running copy
+ * (the `second-instance` event) and quits. Waits until it quits.
+ *
+ * @returns The exit code of the second copy.
+ */
+export function runSecondInstance(
+  fakeGoogle: FakeGoogleServer,
+  userDataDir: string,
+  args: string[]
+): Promise<number | null> {
+  const electronPath = createRequire(__filename)('electron') as string
+  return new Promise((resolve, reject) => {
+    const child = spawn(electronPath, [APP_ROOT, ...args], {
+      cwd: APP_ROOT,
+      env: shiftedEnv(fakeGoogle, userDataDir),
+      stdio: 'ignore'
+    })
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error('The second copy of Shifted did not quit.'))
+    }, 20_000)
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.on('exit', (code) => {
+      clearTimeout(timer)
+      resolve(code)
+    })
+  })
+}
+
+/** The page of the account picker. */
+export function accountPickerPage(app: ElectronApplication): Promise<Page> {
+  return findPage(app, (url) => url.startsWith('file:') && url.endsWith('#mailto-picker'))
 }
 
 export const test = base.extend<ShiftedFixtures>({
@@ -155,6 +205,7 @@ export async function visibleGoogleApp(app: ElectronApplication): Promise<Visibl
 export interface ConfigFile {
   version: number
   general: { askWhereToSave: boolean }
+  mailto?: { defaultAccountId: string | null; lastAccountId: string | null }
   accounts: {
     id: string
     email: string

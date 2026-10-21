@@ -34,6 +34,11 @@ export interface ShiftedTestRecords {
   appBadgeTotal: number
   /** The notifications of new mail, Calendar, and Chat that passed the rules, in order. */
   notifications: RecordedNotification[]
+  /**
+   * How many times "Make Shifted the default email app" ran. In test mode, Shifted never
+   * changes the default email app of the computer.
+   */
+  makeDefaultEmailApp: number
 }
 
 interface TestRecordsHolder {
@@ -49,7 +54,8 @@ export function testRecords(): ShiftedTestRecords | undefined {
     showItemInFolder: [],
     downloadNotifications: [],
     appBadgeTotal: 0,
-    notifications: []
+    notifications: [],
+    makeDefaultEmailApp: 0
   }
   return holder.shiftedTestRecords
 }

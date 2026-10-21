@@ -34,7 +34,8 @@ import {
   newAccount,
   type AccountConfig,
   type Config,
-  type ConfigStore
+  type ConfigStore,
+  type MailtoConfig
 } from './config'
 import { Downloads } from './downloads'
 import { feedErrorText, readFeed, type FeedEntry, type FeedFetch, type FeedResult } from './feed'
@@ -91,6 +92,8 @@ export class Accounts {
   /** The timer that ends the snooze. */
   private snoozeTimer: ReturnType<typeof setTimeout> | null = null
   private selectedAccountId: string | null
+  /** A `mailto:` link came while Shifted had no accounts. See `showAddAccountFirst`. */
+  private addAccountFirst = false
   private mainWindow: BrowserWindow | null = null
   private views: AccountViews | null = null
   private readonly childWindows = new ChildWindows()
@@ -149,8 +152,55 @@ export class Accounts {
       accounts: this.config.accounts.map((account) => this.accountState(account)),
       selectedAccountId: this.selectedAccountId,
       general: { ...this.config.general },
-      snooze: snooze ? { ...snooze } : null
+      snooze: snooze ? { ...snooze } : null,
+      mailtoDefaultAccountId: this.config.mailto.defaultAccountId,
+      addAccountFirst: this.addAccountFirst && this.config.accounts.length === 0
     }
+  }
+
+  /** The choices of the account picker: the `mailto:` default and the account used last. */
+  mailtoChoice(): MailtoConfig {
+    return { ...this.config.mailto }
+  }
+
+  /**
+   * Save the account that the person chose for a `mailto:` link. With `always`, it is
+   * also the `mailto:` default ("Always use this account").
+   */
+  saveMailtoChoice(accountId: string, always: boolean): void {
+    if (!this.findAccount(accountId)) return
+    const mailto: MailtoConfig = {
+      defaultAccountId: always ? accountId : this.config.mailto.defaultAccountId,
+      lastAccountId: accountId
+    }
+    if (
+      mailto.defaultAccountId === this.config.mailto.defaultAccountId &&
+      mailto.lastAccountId === this.config.mailto.lastAccountId
+    ) {
+      return
+    }
+    this.saveMailto(mailto)
+  }
+
+  /** Forget the `mailto:` default, so that the account picker shows again. */
+  clearMailtoDefault(): void {
+    if (this.config.mailto.defaultAccountId === null) return
+    this.saveMailto({ ...this.config.mailto, defaultAccountId: null })
+  }
+
+  private saveMailto(mailto: MailtoConfig): void {
+    this.config = { ...this.config, mailto }
+    this.store.save(this.config)
+    this.publish()
+  }
+
+  /**
+   * A `mailto:` link came from another app, and Shifted has no accounts. The main window
+   * says "Add an account first" until an account is added.
+   */
+  showAddAccountFirst(): void {
+    this.addAccountFirst = true
+    this.publish()
   }
 
   /** Call the listener with the new messages of each read of the feed of each account. */
@@ -297,6 +347,7 @@ export class Accounts {
   /** Make a new account and open its sign-in window. */
   addAccount(): void {
     const account = newAccount(this.config.accounts)
+    this.addAccountFirst = false
     this.config = { ...this.config, accounts: [...this.config.accounts, account] }
     this.store.save(this.config)
     this.session(account.id)
@@ -509,10 +560,15 @@ export class Accounts {
       console.error(`Shifted could not delete the photo of account ${accountId}:`, error)
     }
 
-    // 4. Remove the account from the configuration.
+    // 4. Remove the account from the configuration, also from the account picker choices.
+    const forget = (id: string | null): string | null => (id === accountId ? null : id)
     this.config = {
       ...this.config,
-      accounts: this.config.accounts.filter((account) => account.id !== accountId)
+      accounts: this.config.accounts.filter((account) => account.id !== accountId),
+      mailto: {
+        defaultAccountId: forget(this.config.mailto.defaultAccountId),
+        lastAccountId: forget(this.config.mailto.lastAccountId)
+      }
     }
     this.store.save(this.config)
     this.status.delete(accountId)

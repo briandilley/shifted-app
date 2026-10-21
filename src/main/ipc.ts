@@ -14,8 +14,10 @@ import {
   type ViewBounds
 } from '../shared/api'
 import { buildAccountMenu } from './account-menu'
+import type { AccountPicker } from './account-picker'
 import type { Accounts } from './accounts'
 import { isAccountId } from './config'
+import { isDefaultEmailApp, makeDefaultEmailApp } from './default-email-app'
 import type { ScreenPicker } from './screen-picker'
 import type { SettingsWindow } from './settings-window'
 
@@ -41,7 +43,8 @@ function logError(action: string): (error: unknown) => void {
 export function registerIpc(
   accounts: Accounts,
   settings: SettingsWindow,
-  screenPicker: ScreenPicker
+  screenPicker: ScreenPicker,
+  accountPicker: AccountPicker
 ): void {
   const isMainScreen = (sender: WebContents): boolean => accounts.isMainScreen(sender)
   /** The main window or the configuration window. */
@@ -54,7 +57,10 @@ export function registerIpc(
   }
 
   ipcMain.handle(IpcChannel.getState, (event) => {
-    if (!isShiftedScreen(event.sender)) throw new Error('Not a screen of Shifted.')
+    // The account picker lists the accounts, so it also reads the state.
+    if (!isShiftedScreen(event.sender) && !accountPicker.isScreen(event.sender)) {
+      throw new Error('Not a screen of Shifted.')
+    }
     return accounts.state()
   })
 
@@ -175,5 +181,36 @@ export function registerIpc(
     if (!screenPicker.isScreen(event.sender)) return
     if (sourceId !== null && typeof sourceId !== 'string') return
     screenPicker.choose(sourceId)
+  })
+
+  ipcMain.on(IpcChannel.clearMailtoDefault, (event) => {
+    if (!isShiftedScreen(event.sender)) return
+    accounts.clearMailtoDefault()
+  })
+
+  ipcMain.handle(IpcChannel.isDefaultEmailApp, (event) => {
+    if (!settings.isScreen(event.sender)) throw new Error('Not the configuration window.')
+    return isDefaultEmailApp()
+  })
+
+  ipcMain.handle(IpcChannel.makeDefaultEmailApp, (event) => {
+    if (!settings.isScreen(event.sender)) throw new Error('Not the configuration window.')
+    return makeDefaultEmailApp()
+  })
+
+  ipcMain.handle(IpcChannel.getMailtoPicker, (event) => {
+    if (!accountPicker.isScreen(event.sender)) throw new Error('Not the account picker.')
+    return accountPicker.info()
+  })
+
+  ipcMain.on(IpcChannel.chooseMailtoAccount, (event, accountId: unknown, always: unknown) => {
+    if (!accountPicker.isScreen(event.sender) || !isAccountId(accountId)) return
+    if (typeof always !== 'boolean') return
+    accountPicker.choose(accountId, always)
+  })
+
+  ipcMain.on(IpcChannel.cancelMailtoPicker, (event) => {
+    if (!accountPicker.isScreen(event.sender)) return
+    accountPicker.cancel()
   })
 }

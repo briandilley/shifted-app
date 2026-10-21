@@ -83,6 +83,21 @@ export interface Config {
   accounts: AccountConfig[]
   /** The snooze, or `null` when it does not run. Missing in a file from phase 04. */
   snooze: Snooze | null
+  /** The choices of the account picker. Missing in a file from phase 05. */
+  mailto: MailtoConfig
+}
+
+/** The choices of the account picker for `mailto:` links from other apps. */
+export interface MailtoConfig {
+  /** The account of "Always use this account", or `null`. */
+  defaultAccountId: string | null
+  /** The account that the person used last for a `mailto:` link, or `null`. */
+  lastAccountId: string | null
+}
+
+/** The account picker choices of a new configuration. */
+export function defaultMailtoConfig(): MailtoConfig {
+  return { defaultAccountId: null, lastAccountId: null }
 }
 
 /** The General values of a new configuration. */
@@ -93,7 +108,13 @@ export function defaultGeneralConfig(): GeneralConfig {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function emptyConfig(): Config {
-  return { version: CONFIG_VERSION, general: defaultGeneralConfig(), accounts: [], snooze: null }
+  return {
+    version: CONFIG_VERSION,
+    general: defaultGeneralConfig(),
+    accounts: [],
+    snooze: null,
+    mailto: defaultMailtoConfig()
+  }
 }
 
 /** True when the value is a UUID, so that it is safe in a partition name. */
@@ -157,6 +178,23 @@ function parseSnooze(value: unknown): Snooze | null | undefined {
   return { until }
 }
 
+/**
+ * Read the account picker choices. A missing value or field is `null`. An account ID that
+ * is not in the accounts is also `null`.
+ */
+function parseMailtoConfig(value: unknown, accountIds: Set<string>): MailtoConfig | undefined {
+  const mailto = defaultMailtoConfig()
+  if (value === undefined) return mailto
+  if (!isRecord(value)) return undefined
+  for (const key of ['defaultAccountId', 'lastAccountId'] as const) {
+    const id = value[key]
+    if (id === undefined || id === null) continue
+    if (!isAccountId(id)) return undefined
+    mailto[key] = accountIds.has(id) ? id : null
+  }
+  return mailto
+}
+
 function parseAccount(value: unknown): AccountConfig | undefined {
   if (!isRecord(value)) return undefined
   const { id, email, nickname, color, order, lastGoogleApp } = value
@@ -214,7 +252,9 @@ export function parseConfig(value: unknown): Config | undefined {
   parsed.sort((a, b) => a.order - b.order)
   const snooze = parseSnooze(value['snooze'])
   if (snooze === undefined) return undefined
-  return { version: CONFIG_VERSION, general, accounts: parsed, snooze }
+  const mailto = parseMailtoConfig(value['mailto'], ids)
+  if (!mailto) return undefined
+  return { version: CONFIG_VERSION, general, accounts: parsed, snooze, mailto }
 }
 
 /**

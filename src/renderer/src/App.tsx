@@ -6,9 +6,19 @@ import { useShiftedState } from './use-shifted-state'
 import { useViewBounds } from './use-view-bounds'
 
 /** What the content area shows when no Google app of the selected account shows. */
-function ContentMessage({ account }: { account: AccountState | undefined }): React.JSX.Element {
+interface ContentMessageProps {
+  account: AccountState | undefined
+  /** A `mailto:` link came from another app while Shifted had no accounts. */
+  addAccountFirst: boolean
+}
+
+function ContentMessage({ account, addAccountFirst }: ContentMessageProps): React.JSX.Element {
   if (!account) {
-    return <p className={styles.message}>No accounts yet</p>
+    return (
+      <p className={styles.message} role={addAccountFirst ? 'alert' : undefined}>
+        {addAccountFirst ? 'Add an account first' : 'No accounts yet'}
+      </p>
+    )
   }
   switch (account.status) {
     case 'signing-in':
@@ -47,7 +57,7 @@ function App(): React.JSX.Element {
       <div className={styles.right}>
         <TabBar account={account} />
         <main ref={contentAreaRef} className={styles.contentArea}>
-          {state && <ContentMessage account={account} />}
+          {state && <ContentMessage account={account} addAccountFirst={state.addAccountFirst} />}
         </main>
       </div>
     </div>

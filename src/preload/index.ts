@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IpcChannel,
   type GoogleApp,
+  type MailtoPickerInfo,
   type NotificationKind,
   type QuietHours,
   type ScreenPickerInfo,
@@ -60,7 +61,17 @@ const shifted: ShiftedApi = Object.freeze({
   getScreenSources: () =>
     ipcRenderer.invoke(IpcChannel.getScreenSources) as Promise<ScreenPickerInfo>,
   chooseScreenSource: (sourceId: string | null) =>
-    ipcRenderer.send(IpcChannel.chooseScreenSource, sourceId)
+    ipcRenderer.send(IpcChannel.chooseScreenSource, sourceId),
+  clearMailtoDefault: () => ipcRenderer.send(IpcChannel.clearMailtoDefault),
+  isDefaultEmailApp: () => ipcRenderer.invoke(IpcChannel.isDefaultEmailApp) as Promise<boolean>,
+  makeDefaultEmailApp: () => ipcRenderer.invoke(IpcChannel.makeDefaultEmailApp) as Promise<boolean>,
+  getMailtoPicker: () =>
+    ipcRenderer.invoke(IpcChannel.getMailtoPicker) as Promise<MailtoPickerInfo>,
+  onMailtoPickerChanged: (listener: (info: MailtoPickerInfo) => void) =>
+    listen(IpcChannel.mailtoPickerChanged, listener),
+  chooseMailtoAccount: (accountId: string, always: boolean) =>
+    ipcRenderer.send(IpcChannel.chooseMailtoAccount, accountId, always),
+  cancelMailtoPicker: () => ipcRenderer.send(IpcChannel.cancelMailtoPicker)
 })
 
 contextBridge.exposeInMainWorld('shifted', shifted)

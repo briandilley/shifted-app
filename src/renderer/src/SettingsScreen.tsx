@@ -20,6 +20,7 @@ import {
   type QuietHours,
   type SettingsFocus,
   type SettingsRequest,
+  type ShiftedState,
   type Snooze
 } from '../../shared/api'
 import { accountName, accountTitle, colorName } from './account-display'
@@ -397,8 +398,98 @@ function PagePermissionsField({ account }: { account: AccountState }): React.JSX
   )
 }
 
+/** The text next to the "Make Shifted the default email app" button. */
+function defaultEmailAppText(isDefault: boolean | null): string {
+  if (isDefault === null) return ''
+  return isDefault ? 'Shifted is the default email app.' : 'Shifted is not the default email app.'
+}
+
+/** "Make Shifted the default email app", and whether it is the default now. */
+function DefaultEmailAppField(): React.JSX.Element {
+  const [isDefault, setIsDefault] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    const check = (): void => {
+      window.shifted
+        .isDefaultEmailApp()
+        .then((value) => {
+          if (active) setIsDefault(value)
+        })
+        .catch((error: unknown) => {
+          console.error('Shifted could not check the default email app:', error)
+        })
+    }
+    check()
+    // On Windows, the person chooses Shifted in the settings of Windows. Check again when
+    // the configuration window comes back to the front.
+    window.addEventListener('focus', check)
+    return () => {
+      active = false
+      window.removeEventListener('focus', check)
+    }
+  }, [])
+
+  const makeDefault = (): void => {
+    setBusy(true)
+    window.shifted
+      .makeDefaultEmailApp()
+      .then((value) => setIsDefault(value))
+      .catch((error: unknown) => {
+        console.error('Shifted could not become the default email app:', error)
+      })
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className={styles.field}>
+      <span className={styles.label}>Default email app</span>
+      <div className={styles.row}>
+        <button type="button" className={styles.button} disabled={busy} onClick={makeDefault}>
+          Make Shifted the default email app
+        </button>
+        <span className={styles.note} data-default-email-app role="status">
+          {defaultEmailAppText(isDefault)}
+        </span>
+      </div>
+      <p className={styles.note}>
+        {window.shifted.platform === 'win32'
+          ? 'Windows opens its Default apps page. Choose Shifted for email links (MAILTO) there.'
+          : 'Email links from other apps then open a new message in Shifted.'}
+      </p>
+    </div>
+  )
+}
+
+/** The "Always use this account" choice of the account picker, and the button that clears it. */
+function MailtoDefaultField({ state }: { state: ShiftedState }): React.JSX.Element {
+  const account = state.accounts.find((candidate) => candidate.id === state.mailtoDefaultAccountId)
+  return (
+    <div className={styles.field}>
+      <span className={styles.label}>Account picker</span>
+      <p className={styles.note} data-mailto-default>
+        {account
+          ? `Email links from other apps always use ${accountTitle(account)}.`
+          : 'Shifted asks which account to use for each email link from another app.'}
+      </p>
+      <div>
+        <button
+          type="button"
+          className={styles.button}
+          disabled={!account}
+          onClick={() => window.shifted.clearMailtoDefault()}
+        >
+          Clear the always-use account
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /** The General page. */
-function GeneralPage({ general }: { general: GeneralConfig }): React.JSX.Element {
+function GeneralPage({ state }: { state: ShiftedState }): React.JSX.Element {
+  const general: GeneralConfig = state.general
   return (
     <section className={styles.page} aria-labelledby="page-title">
       <h1 id="page-title" className={styles.title}>
@@ -419,6 +510,8 @@ function GeneralPage({ general }: { general: GeneralConfig }): React.JSX.Element
           When this is off, Shifted saves each download in your Downloads folder.
         </p>
       </div>
+      <DefaultEmailAppField />
+      <MailtoDefaultField state={state} />
     </section>
   )
 }
@@ -498,7 +591,7 @@ function SettingsScreen(): React.JSX.Element {
           ) : page === 'notifications' ? (
             <NotificationsPage snooze={state.snooze} />
           ) : (
-            <GeneralPage general={state.general} />
+            <GeneralPage state={state} />
           ))}
       </main>
     </div>
