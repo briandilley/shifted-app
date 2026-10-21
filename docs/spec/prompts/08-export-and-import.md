@@ -31,7 +31,9 @@ At the end of this phase, you can export the configuration to a file, or to an e
 
 3. Put in it only the values that "Move to another computer" in `PRODUCT.md` lists. Write the list of allowed keys once, in this module. Never copy a key that is not on the list.
 4. Do not export the `id` of an account. The import makes new IDs.
-5. The text form is for email. It is the file form, compressed with `zlib.deflateRawSync` and encoded as base64, between two marker lines:
+5. Write the accounts in the order of the sidebar.
+6. The "Always use this account" choice points to an account by its ID. Export it as the address of that account. On import, turn the address back into the new ID.
+7. The text form is for email. It is the file form, compressed with `zlib.deflateRawSync` and encoded as base64, between two marker lines:
 
    ```text
    -----BEGIN SHIFTED CONFIGURATION-----
@@ -40,7 +42,7 @@ At the end of this phase, you can export the configuration to a file, or to an e
    ```
 
    The compose URL has a length limit. The text form of 9 accounts is less than 2,000 characters. The plain JSON is about 5 times longer.
-6. The import reads both forms. For the text form, it takes the text between the two marker lines and ignores spaces and line breaks. So the person can paste a whole email, with text before and after the markers.
+8. The import reads both forms. For the text form, it takes the text between the two marker lines and ignores spaces and line breaks. So the person can paste a whole email, with text before and after the markers.
 
 ### 2. Export to a file
 
@@ -68,28 +70,44 @@ At the end of this phase, you can export the configuration to a file, or to an e
 4. If `format` is not `shifted-configuration`, or the JSON or the base64 is broken, show "Shifted cannot read this configuration." Change nothing.
 5. If `version` is higher than the version that this build knows, show "This configuration comes from a newer version of Shifted. Update Shifted, then try again." Change nothing.
 6. Ignore keys that the module does not know. If a known key has a wrong type or a value out of range, show "Shifted cannot read this configuration." and change nothing.
-7. Before you change anything, show what will change, and ask the person to confirm. Apply the rules of "Move to another computer" in `PRODUCT.md`.
 
-### 5. Accounts with no sign-in
+### 5. Merge
+
+1. Write the merge as a pure function. It takes the current configuration and the import, and returns the new configuration and a list of changes.
+2. Follow the merge rules of "Move to another computer" in `PRODUCT.md`.
+3. Compare addresses with no difference between capital and small letters.
+4. If the import has the same address twice, use the first one.
+5. An account on this computer with no address yet, for example during sign-in, never matches. It stays.
+6. Before you change anything, show the list of changes in the import window. Example: "Add 3 accounts: …", "Update 1 account: …", "Replace the General values." The buttons are `Import` and `Cancel`.
+7. After `Import`, save the configuration once, then update the sidebar.
+
+### 6. Accounts with no sign-in
 
 1. An imported account has a new ID and an empty session. Do not read its feed until it signs in.
 2. In place of Gmail, show a React panel with "Sign in to <address>." and a `Sign in` button. The button opens the sign-in window of prompt 01.
 3. Add an optional address to the sign-in URL function in `google-urls.ts`. With an address, add `&Email=<encoded address>` to the sign-in URL. Google's sign-in page then fills in the address. We tested this on 2026-10-21.
 4. After sign-in, take the address from the feed as in prompt 01. If it is different from the imported address, save the new address and keep the other values of the account.
 
-### 6. The fake Google test server
+### 7. The fake Google test server
 
 1. Make the fake sign-in page show the `Email` parameter that it received, so that a test can read it.
 
 ## Out of scope
 
 - Sign-ins, cookies, and sessions. They never leave the computer.
+- The values that belong to one computer. "Move to another computer" in `PRODUCT.md` lists them.
 - Sync between computers. Shifted has no server.
+- A password or encryption for the exported configuration. It holds no secrets.
 - Files that open Shifted on a double-click. Installers come in prompt 11.
 
 ## Automated tests
 
 - Unit: export, then import, gives the same values, with new account IDs.
+- Unit: the export has no value that belongs to one computer, for example open at login or a remembered page permission.
+- Unit: the "Always use this account" choice points to the right account after the import.
+- Unit: the merge updates an account with the same address, also with other capital letters. The account keeps its ID, so it keeps its session.
+- Unit: the merge adds new addresses, keeps the accounts that the import does not have at the end, and takes the order of the import.
+- Unit: the merge uses the first of two imported accounts with the same address, and never matches an account with no address.
 - Unit: the export has only the allowed keys. Test it with a configuration that has more keys.
 - Unit: the text form survives a round trip with extra line breaks and extra spaces. It also survives inside a whole email, with text before and after the markers.
 - Unit: the text form of 9 accounts with long nicknames and addresses is less than 2,000 characters.
@@ -97,6 +115,7 @@ At the end of this phase, you can export the configuration to a file, or to an e
 - Unit: the sign-in URL with an address has the `Email` parameter, and the one without an address does not.
 - End-to-end: replace `dialog.showSaveDialog` from the test with `electronApp.evaluate`. Click `Export configuration…`. The file exists and the import reads it.
 - End-to-end: click `Email it to myself`. The fake Gmail shows a compose link with the address, the subject, and the text form.
+- End-to-end: sign in to one fake account, then import a file that has it and two more. The signed-in account keeps its fake Gmail, and the two new accounts show the `Sign in` panel.
 - End-to-end: start with an empty user data folder and import the file. The sidebar shows the accounts with their nicknames and colors. Each shows the `Sign in` panel, and the fake sign-in page gets the address.
 
 ## Manual tests
@@ -105,8 +124,8 @@ At the end of this phase, you can export the configuration to a file, or to an e
 2. Click `Export configuration…` and save the file.
 3. Click `Email it to myself`. Make sure that a new message opens in Gmail, to your own address, with the block of text. Send it.
 4. Use a second computer. If you do not have one, quit Shifted and rename its app data folder for this test. Rename it back after the test.
-5. Start Shifted. Click `Import configuration…`. Paste the whole message from step 3. Make sure that Shifted shows what will change.
-6. Confirm. Make sure that the accounts show with their nicknames and colors, and with a `Sign in` button.
+5. Start Shifted. Add one of your accounts and sign in. Click `Import configuration…`. Paste the whole message from step 3. Make sure that Shifted shows what will change.
+6. Confirm. Make sure that the account from step 5 is still signed in and has its imported nickname and color. Make sure that the other accounts show with a `Sign in` button.
 7. Click `Sign in` on one account. Make sure that the sign-in window has the address filled in.
 8. Import the file from step 2. Make sure that the result is the same.
 
