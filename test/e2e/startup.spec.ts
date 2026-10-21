@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { accountBackdrop } from '../../src/shared/account-colors'
-import { test, expect } from './fixtures'
+import { APP_ROOT, test, expect } from './fixtures'
 
 test('Shifted starts with one window called "Shifted" that shows "No accounts yet"', async ({
   shifted,
@@ -50,6 +52,11 @@ test('the user agent keeps the Electron/ token and has the Shifted/ token', asyn
   const userAgent = await mainWindow.evaluate(() => navigator.userAgent)
   expect(userAgent).toMatch(/\bElectron\/\d+/)
   expect(userAgent).toMatch(/\bShifted\/\d+\.\d+\.\d+/)
+  // The version is the version of package.json.
+  const { version } = JSON.parse(readFileSync(join(APP_ROOT, 'package.json'), 'utf8')) as {
+    version: string
+  }
+  expect(userAgent).toContain(` Shifted/${version} `)
 })
 
 test('the screens of Shifted have no access to Node.js', async ({ mainWindow }) => {

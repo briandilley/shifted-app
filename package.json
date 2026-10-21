@@ -1,7 +1,7 @@
 {
   "name": "shifted",
   "productName": "Shifted",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Shifted keeps several Gmail accounts in one window.",
   "main": "./out/main/index.js",
   "author": "Brian Dilley",

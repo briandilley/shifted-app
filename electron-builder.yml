@@ -1,4 +1,4 @@
-# Minimal configuration. Prompt 10 adds the installers, signing, and auto-update.
+# Minimal configuration for an unsigned build. Prompt 11 adds signed installers and auto-update.
 appId: io.github.briandilley.shifted
 productName: Shifted
 directories:

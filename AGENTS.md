@@ -46,6 +46,9 @@ build/                    build resources for electron-builder (icon)
 resources/                files that ship with the app (window icon)
 .github/workflows/        the tests on macOS, Windows, and Linux (GitHub Actions)
 docs/security-review.md   the result of the security review of phase 09
+docs/spec-trace.md        each rule of PRODUCT.md with its code and its test (phase 10)
+docs/manual-tests.md      the one list of manual tests, with a Result column (phase 10)
+README.md                 how to run, build, and sign in, and where the data is
 ```
 
 ## Test mode
