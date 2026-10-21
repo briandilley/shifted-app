@@ -1,0 +1,33 @@
+/* The ring is 2 points wide, with a 2-point gap between the ring and the photo. */
+.avatar {
+  display: inline-flex;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 2px solid var(--account-color);
+  border-radius: 50%;
+}
+
+.photo,
+.letter {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.photo {
+  object-fit: cover;
+}
+
+.letter {
+  background: var(--account-color);
+  font-size: calc(var(--avatar-size) * 0.42);
+  font-weight: 600;
+  line-height: 1;
+}

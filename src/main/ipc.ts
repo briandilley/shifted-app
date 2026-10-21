@@ -2,10 +2,12 @@
  * The IPC handlers for the screens of Shifted. Only the screens of Shifted can call
  * them. Google's pages have no preload script, so they cannot call them.
  */
-import { ipcMain } from 'electron'
-import { IpcChannel, type ViewBounds } from '../shared/api'
+import { BrowserWindow, ipcMain, type WebContents } from 'electron'
+import { IpcChannel, isGoogleApp, type SettingsRequest, type ViewBounds } from '../shared/api'
+import { buildAccountMenu } from './account-menu'
 import type { Accounts } from './accounts'
 import { isAccountId } from './config'
+import type { SettingsWindow } from './settings-window'
 
 function parseBounds(value: unknown): ViewBounds | undefined {
   if (typeof value !== 'object' || value === null) return undefined
@@ -20,27 +22,90 @@ function parseBounds(value: unknown): ViewBounds | undefined {
   return { x: x ?? 0, y: y ?? 0, width: width ?? 0, height: height ?? 0 }
 }
 
-export function registerIpc(accounts: Accounts): void {
+function logError(action: string): (error: unknown) => void {
+  return (error) => {
+    console.error(`Shifted could not ${action}:`, error)
+  }
+}
+
+export function registerIpc(accounts: Accounts, settings: SettingsWindow): void {
+  const isMainScreen = (sender: WebContents): boolean => accounts.isMainScreen(sender)
+  /** The main window or the configuration window. */
+  const isShiftedScreen = (sender: WebContents): boolean =>
+    accounts.isMainScreen(sender) || settings.isScreen(sender)
+
+  const openSettings = (request: SettingsRequest): void => settings.open(request)
+  const signOut = (accountId: string): void => {
+    accounts.signOut(accountId).catch(logError('sign the account out'))
+  }
+
   ipcMain.handle(IpcChannel.getState, (event) => {
-    if (!accounts.isMainScreen(event.sender)) throw new Error('Not a screen of Shifted.')
+    if (!isShiftedScreen(event.sender)) throw new Error('Not a screen of Shifted.')
     return accounts.state()
   })
 
   ipcMain.on(IpcChannel.addAccount, (event) => {
-    if (!accounts.isMainScreen(event.sender)) return
+    if (!isMainScreen(event.sender)) return
     accounts.addAccount()
   })
 
-  ipcMain.on(IpcChannel.removeAccount, (event, accountId: unknown) => {
-    if (!accounts.isMainScreen(event.sender) || !isAccountId(accountId)) return
-    accounts.confirmAndRemove(accountId).catch((error: unknown) => {
-      console.error('Shifted could not remove the account:', error)
+  ipcMain.on(IpcChannel.selectAccount, (event, accountId: unknown) => {
+    if (!isMainScreen(event.sender) || !isAccountId(accountId)) return
+    accounts.selectAccount(accountId)
+  })
+
+  ipcMain.on(IpcChannel.selectGoogleApp, (event, googleApp: unknown) => {
+    if (!isMainScreen(event.sender) || !isGoogleApp(googleApp)) return
+    accounts.selectGoogleApp(googleApp)
+  })
+
+  ipcMain.on(IpcChannel.moveAccount, (event, accountId: unknown, toIndex: unknown) => {
+    if (!isMainScreen(event.sender) || !isAccountId(accountId)) return
+    if (typeof toIndex !== 'number' || !Number.isInteger(toIndex)) return
+    accounts.moveAccount(accountId, toIndex)
+  })
+
+  ipcMain.on(IpcChannel.showAccountMenu, (event, accountId: unknown) => {
+    if (!isMainScreen(event.sender) || !isAccountId(accountId)) return
+    const account = accounts.account(accountId)
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!account || !window) return
+    const menu = buildAccountMenu(account, {
+      openSettings,
+      signOut,
+      remove: (id) => {
+        accounts.confirmAndRemove(id, window).catch(logError('remove the account'))
+      }
     })
+    menu.popup({ window })
+  })
+
+  ipcMain.on(IpcChannel.removeAccount, (event, accountId: unknown) => {
+    if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
+    const window = BrowserWindow.fromWebContents(event.sender)
+    accounts.confirmAndRemove(accountId, window).catch(logError('remove the account'))
+  })
+
+  ipcMain.on(IpcChannel.signOut, (event, accountId: unknown) => {
+    if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
+    signOut(accountId)
   })
 
   ipcMain.on(IpcChannel.signInAgain, (event, accountId: unknown) => {
-    if (!accounts.isMainScreen(event.sender) || !isAccountId(accountId)) return
+    if (!isMainScreen(event.sender) || !isAccountId(accountId)) return
     accounts.signInAgain(accountId)
+  })
+
+  ipcMain.on(IpcChannel.setNickname, (event, accountId: unknown, nickname: unknown) => {
+    if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
+    if (typeof nickname !== 'string') return
+    accounts.setNickname(accountId, nickname)
+  })
+
+  ipcMain.on(IpcChannel.setColor, (event, accountId: unknown, color: unknown) => {
+    if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
+    if (typeof color !== 'string') return
+    accounts.setColor(accountId, color)
   })
 
   ipcMain.on(IpcChannel.setViewBounds, (event, value: unknown) => {

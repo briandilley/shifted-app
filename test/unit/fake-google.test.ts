@@ -1,6 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { startFakeGoogle, type FakeGoogleServer } from '../fake-google/server'
 
+/** Sign in on the fake server with this address, and return the cookie header. */
+async function signIn(fakeGoogle: FakeGoogleServer, email?: string): Promise<string> {
+  const response = await fetch(`${fakeGoogle.url}/signin`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: email === undefined ? '' : new URLSearchParams({ email }).toString()
+  })
+  return (response.headers.get('set-cookie') ?? '').split(';')[0] ?? ''
+}
+
 describe('the fake Google test server', () => {
   let fakeGoogle: FakeGoogleServer
 
@@ -32,6 +43,11 @@ describe('the fake Google test server', () => {
     const calendar = await fetch(`${fakeGoogle.url}/calendar/`, { headers })
     expect(await calendar.text()).toContain('<title>Calendar</title>')
 
+    const avatar = await fetch(`${fakeGoogle.url}/avatar.png`, { headers })
+    expect(avatar.headers.get('content-type')).toBe('image/png')
+    const png = Buffer.from(await avatar.arrayBuffer())
+    expect(png.subarray(1, 4).toString('latin1')).toBe('PNG')
+
     const signInAgain = await fetch(`${fakeGoogle.url}/signin`, { headers, redirect: 'manual' })
     expect(signInAgain.status).toBe(302)
     expect(signInAgain.headers.get('location')).toBe('/gmail/')
@@ -47,11 +63,46 @@ describe('the fake Google test server', () => {
     expect(gmail.status).toBe(302)
     expect(gmail.headers.get('location')).toBe('/signin')
 
-    const signIn = await fetch(`${fakeGoogle.url}/signin`)
-    expect(await signIn.text()).toContain('Sign in</button>')
+    const calendar = await fetch(`${fakeGoogle.url}/calendar/`, { redirect: 'manual' })
+    expect(calendar.status).toBe(302)
+    expect(calendar.headers.get('location')).toBe('/signin')
+
+    const signInPage = await fetch(`${fakeGoogle.url}/signin`)
+    const html = await signInPage.text()
+    expect(html).toContain('Sign in</button>')
+    expect(html).toContain('name="email" value="test@example.com"')
+
+    const avatar = await fetch(`${fakeGoogle.url}/avatar.png`)
+    expect(avatar.status).toBe(404)
 
     const feed = await fetch(`${fakeGoogle.url}/feed/atom/`)
     expect(feed.status).toBe(401)
+  })
+
+  it('gives each session the address that signed in', async () => {
+    const first = await signIn(fakeGoogle, 'one@example.com')
+    const second = await signIn(fakeGoogle, 'two@example.com')
+    const third = await signIn(fakeGoogle)
+
+    const gmailOf = async (cookie: string): Promise<string> =>
+      (await fetch(`${fakeGoogle.url}/gmail/`, { headers: { cookie } })).text()
+    expect(await gmailOf(first)).toContain('<p id="address">one@example.com</p>')
+    expect(await gmailOf(second)).toContain('<p id="address">two@example.com</p>')
+    expect(await gmailOf(third)).toContain('<p id="address">test@example.com</p>')
+    // The fake Gmail shows the photo where gmail-page.ts looks for it.
+    expect(await gmailOf(first)).toMatch(
+      /<a href="\/SignOutOptions"[^>]*><img class="gbii" src="\/avatar.png"/
+    )
+
+    const feedOf = async (cookie: string): Promise<string> =>
+      (await fetch(`${fakeGoogle.url}/feed/atom/`, { headers: { cookie } })).text()
+    expect(await feedOf(second)).toContain('<title>Gmail - Inbox for two@example.com</title>')
+
+    const avatarOf = async (cookie: string): Promise<Buffer> =>
+      Buffer.from(
+        await (await fetch(`${fakeGoogle.url}/avatar.png`, { headers: { cookie } })).arrayBuffer()
+      )
+    expect((await avatarOf(first)).equals(await avatarOf(second))).toBe(false)
   })
 
   it('signs every session out with the control route, and clears the cookie', async () => {

@@ -1,0 +1,107 @@
+.sidebar {
+  display: flex;
+  width: 68px;
+  min-height: 0;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar-background);
+}
+
+.list {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  width: 100%;
+  flex: none;
+  justify-content: center;
+}
+
+/* The selected account has a bar on the left edge and a light background. */
+.item::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 4px;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  content: '';
+}
+
+.selected::before {
+  background: var(--text);
+}
+
+.dragging {
+  opacity: 0.55;
+}
+
+.account {
+  position: relative;
+  display: flex;
+  padding: 4px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.account:hover {
+  background: var(--button-hover);
+}
+
+.selected .account {
+  background: var(--selected-background);
+}
+
+.account:focus-visible,
+.addAccount:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* The corner of the avatar where prompt 04 shows the unread badge. */
+.badgeSlot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 18px;
+  height: 18px;
+  pointer-events: none;
+}
+
+.addAccount {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.addAccount:hover {
+  background: var(--button-hover);
+  color: var(--text);
+}

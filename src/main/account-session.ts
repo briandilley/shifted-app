@@ -47,6 +47,18 @@ export async function flushAccountSession(accountId: string): Promise<void> {
 }
 
 /**
+ * Clear the session of an account: its cookies, its site data, and its cache. The account
+ * is then signed out. The partition folder stays. Close every view of the account first.
+ */
+export async function clearAccountSession(accountId: string): Promise<void> {
+  const accountSession = session.fromPartition(partitionName(accountId))
+  await accountSession.clearStorageData()
+  await accountSession.clearCache()
+  await accountSession.clearAuthCache()
+  await accountSession.cookies.flushStore()
+}
+
+/**
  * Delete the session of an account: clear its storage data, then delete its partition
  * folder from disk. Close every view of the account first.
  */

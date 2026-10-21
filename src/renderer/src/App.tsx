@@ -1,5 +1,7 @@
 import type { AccountState } from '../../shared/api'
 import styles from './App.module.css'
+import Sidebar from './Sidebar'
+import TabBar from './TabBar'
 import { useShiftedState } from './use-shifted-state'
 import { useViewBounds } from './use-view-bounds'
 
@@ -24,49 +26,30 @@ function ContentMessage({ account }: { account: AccountState | undefined }): Rea
           </button>
         </div>
       )
-    case 'gmail':
-      // The Gmail view of the account covers the content area.
+    case 'signed-in':
+      // The view of the Google app covers the content area.
       return <></>
   }
 }
 
+/** The main window: the sidebar, the tab bar, and the content area. */
 function App(): React.JSX.Element {
   const state = useShiftedState()
   const contentAreaRef = useViewBounds<HTMLElement>()
   const account = state?.accounts.find((candidate) => candidate.id === state.selectedAccountId)
 
-  // Prompt 02 replaces this temporary bar with the sidebar.
   return (
     <div className={styles.window}>
-      <header className={styles.bar}>
-        {state && !account && (
-          <button
-            type="button"
-            className={styles.button}
-            onClick={() => window.shifted.addAccount()}
-          >
-            Add account
-          </button>
-        )}
-        {account && (
-          <>
-            <span className={styles.accountName}>
-              <span className={styles.swatch} style={{ backgroundColor: account.color }} />
-              {account.email || 'New account'}
-            </span>
-            <button
-              type="button"
-              className={styles.button}
-              onClick={() => window.shifted.removeAccount(account.id)}
-            >
-              Remove account
-            </button>
-          </>
-        )}
-      </header>
-      <main ref={contentAreaRef} className={styles.contentArea}>
-        {state && <ContentMessage account={account} />}
-      </main>
+      <Sidebar
+        accounts={state?.accounts ?? []}
+        selectedAccountId={state?.selectedAccountId ?? null}
+      />
+      <div className={styles.right}>
+        <TabBar account={account} />
+        <main ref={contentAreaRef} className={styles.contentArea}>
+          {state && <ContentMessage account={account} />}
+        </main>
+      </div>
     </div>
   )
 }

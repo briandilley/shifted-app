@@ -1,84 +1,20 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import type { ElectronApplication, Page } from '@playwright/test'
-import type { FakeGoogleServer } from '../fake-google/server'
+import { existsSync } from 'node:fs'
+import type { ElectronApplication } from '@playwright/test'
 import {
+  addAccountAndSignIn,
+  answerRemoveDialog,
+  chooseFromAccountMenu,
   expect,
+  expectFakeGmail,
   findPage,
   launchShifted,
   mainWindowPage,
+  readConfig,
+  sidebarAccount,
+  signInOnFakePage,
   test,
-  visibleMainWindowPages,
-  windowCount
+  visibleMainWindowPages
 } from './fixtures'
-
-interface ConfigFile {
-  version: number
-  accounts: { id: string; email: string; lastGoogleApp: string }[]
-}
-
-function readConfig(userDataDir: string): ConfigFile {
-  return JSON.parse(readFileSync(join(userDataDir, 'config.json'), 'utf8')) as ConfigFile
-}
-
-function isFakeGmail(fakeGoogle: FakeGoogleServer): (url: string) => boolean {
-  return (url) => url.startsWith(`${fakeGoogle.url}/gmail/`)
-}
-
-/** Wait until the main window shows the fake Gmail, and no other window is open. */
-async function expectFakeGmailInMainWindow(
-  app: ElectronApplication,
-  fakeGoogle: FakeGoogleServer
-): Promise<void> {
-  await expect.poll(() => windowCount(app)).toBe(1)
-  await expect.poll(() => visibleMainWindowPages(app)).toEqual([`${fakeGoogle.url}/gmail/`])
-  const gmail = await findPage(app, isFakeGmail(fakeGoogle))
-  await expect(gmail.getByRole('heading', { name: 'Fake Gmail' })).toBeVisible()
-}
-
-/** Click "Sign in" on the fake sign-in page of the open sign-in window. */
-async function signInOnFakePage(
-  app: ElectronApplication,
-  fakeGoogle: FakeGoogleServer
-): Promise<void> {
-  await expect.poll(() => windowCount(app)).toBe(2)
-  const topLine = await findPage(app, (url) => url.endsWith('#sign-in'))
-  const help =
-    process.platform === 'win32'
-      ? 'If Google asks for a passkey, Windows Hello opens.'
-      : 'Passkeys do not work in Shifted on this computer. If Google asks for a passkey, click "Try another way" and use your password.'
-  await expect(topLine.getByText(help)).toBeVisible()
-
-  const signInPage = await findPage(app, (url) => url === `${fakeGoogle.url}/signin`)
-  await signInPage.getByRole('button', { name: 'Sign in' }).click()
-}
-
-/** Click "Add account", then sign in on the fake sign-in page. */
-async function addAccountAndSignIn(
-  app: ElectronApplication,
-  mainWindow: Page,
-  fakeGoogle: FakeGoogleServer
-): Promise<void> {
-  await mainWindow.getByRole('button', { name: 'Add account' }).click()
-  await expect(mainWindow.getByText('Signing in…')).toBeVisible()
-  await signInOnFakePage(app, fakeGoogle)
-  await expectFakeGmailInMainWindow(app, fakeGoogle)
-}
-
-/** Make the confirmation dialog of "Remove account" answer with this button. */
-async function answerRemoveDialog(
-  app: ElectronApplication,
-  button: 'Remove' | 'Cancel'
-): Promise<void> {
-  await app.evaluate(
-    ({ dialog }, response) => {
-      const answer = (): Promise<Electron.MessageBoxReturnValue> =>
-        Promise.resolve({ response, checkboxChecked: false })
-      dialog.showMessageBox = answer as typeof dialog.showMessageBox
-    },
-    button === 'Remove' ? 0 : 1
-  )
-}
 
 /** The partition folder of the session of an account. */
 function partitionFolder(app: ElectronApplication, accountId: string): Promise<string | null> {
@@ -97,7 +33,6 @@ test('add an account: sign in, the sign-in window closes, and the main window sh
   await addAccountAndSignIn(shifted, mainWindow, fakeGoogle)
 
   // Shifted reads the email address from the title of the Atom feed and saves it.
-  await expect(mainWindow.getByText('test@example.com')).toBeVisible()
   const config = readConfig(userDataDir)
   expect(config.version).toBe(1)
   expect(config.accounts).toHaveLength(1)
@@ -128,8 +63,8 @@ test('the account is still signed in after Shifted restarts', async ({
   const second = await launchShifted(fakeGoogle, userDataDir)
   try {
     const mainWindow = await mainWindowPage(second)
-    await expectFakeGmailInMainWindow(second, fakeGoogle)
-    await expect(mainWindow.getByText('test@example.com')).toBeVisible()
+    await expectFakeGmail(second, fakeGoogle)
+    await expect(sidebarAccount(mainWindow, 'test@example.com')).toBeVisible()
     // No sign-in window opened.
     expect(second.windows().some((page) => page.url().includes('#sign-in'))).toBe(false)
   } finally {
@@ -162,7 +97,7 @@ test('a signed-out account shows "This account is signed out." and can sign in a
   await mainWindow.getByRole('button', { name: 'Sign in again' }).click()
   await expect(mainWindow.getByText('Signing in…')).toBeVisible()
   await signInOnFakePage(shifted, fakeGoogle)
-  await expectFakeGmailInMainWindow(shifted, fakeGoogle)
+  await expectFakeGmail(shifted, fakeGoogle)
   expect(readConfig(userDataDir).accounts).toHaveLength(1)
 })
 
@@ -177,16 +112,18 @@ test('remove the account: Shifted asks to confirm, then deletes its partition fo
   const folder = await partitionFolder(shifted, accountId)
   expect(folder).toBeTruthy()
   expect(existsSync(folder ?? '')).toBe(true)
+  const account = sidebarAccount(mainWindow, 'test@example.com')
 
   // Cancel keeps the account.
   await answerRemoveDialog(shifted, 'Cancel')
-  await mainWindow.getByRole('button', { name: 'Remove account' }).click()
-  await expect(mainWindow.getByRole('button', { name: 'Remove account' })).toBeVisible()
+  await chooseFromAccountMenu(shifted, account, 'Remove')
+  await expect(account).toBeVisible()
   expect(readConfig(userDataDir).accounts).toHaveLength(1)
 
   await answerRemoveDialog(shifted, 'Remove')
-  await mainWindow.getByRole('button', { name: 'Remove account' }).click()
+  await chooseFromAccountMenu(shifted, account, 'Remove')
   await expect(mainWindow.getByText('No accounts yet')).toBeVisible()
+  await expect(account).toHaveCount(0)
   await expect.poll(() => existsSync(folder ?? '')).toBe(false)
   expect(readConfig(userDataDir).accounts).toEqual([])
   await expect.poll(() => visibleMainWindowPages(shifted)).toEqual([])

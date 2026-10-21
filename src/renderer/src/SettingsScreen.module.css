@@ -1,0 +1,210 @@
+.window {
+  display: flex;
+  height: 100%;
+}
+
+.list {
+  width: 200px;
+  flex: none;
+  padding: 12px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar-background);
+  overflow-y: auto;
+}
+
+.entries {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.entry:hover {
+  background: var(--button-hover);
+}
+
+.entry[aria-current='page'] {
+  background: var(--selected-background);
+  font-weight: 600;
+}
+
+.entry:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.entryName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.separator {
+  margin: 10px 4px;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.content {
+  min-width: 0;
+  flex: 1;
+  padding: 24px 28px;
+  overflow-y: auto;
+  user-select: text;
+}
+
+.page {
+  display: flex;
+  max-width: 480px;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.accountHeader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.accountNames {
+  min-width: 0;
+}
+
+.address {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.label {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.input {
+  max-width: 320px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--input-background);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.input:focus-visible {
+  border-color: var(--focus);
+  outline: 1px solid var(--focus);
+}
+
+.colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.swatch {
+  position: relative;
+  display: flex;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.swatchInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.swatchColor {
+  width: 100%;
+  height: 100%;
+  border: 3px solid var(--background);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.swatchInput:checked + .swatchColor {
+  box-shadow: 0 0 0 2px var(--text);
+}
+
+.swatchInput:focus-visible + .swatchColor {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--button-background);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--button-hover);
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.danger {
+  color: var(--danger);
+}

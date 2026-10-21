@@ -1,41 +1,66 @@
 /**
- * The accounts of Shifted: the configuration, the session of each account, the Gmail
- * view of each account in the main window, and the sign-in windows.
+ * The accounts of Shifted: the configuration, the session of each account, the Google app
+ * views of each account in the main window, the sign-in windows, and the profile photos.
  */
-import { dialog, WebContentsView, type BrowserWindow, type WebContents } from 'electron'
-import { IpcChannel, type AccountStatus, type ShiftedState, type ViewBounds } from '../shared/api'
+import { dialog, type BrowserWindow, type WebContents } from 'electron'
+import {
+  findAccountColor,
+  IpcChannel,
+  MAX_NICKNAME_LENGTH,
+  type AccountState,
+  type AccountStatus,
+  type GoogleApp,
+  type ShiftedState,
+  type ViewBounds
+} from '../shared/api'
 import {
   accountSession,
+  clearAccountSession,
   deleteAccountSession,
-  flushAccountSession,
-  googlePageWebPreferences
+  flushAccountSession
 } from './account-session'
-import { newAccount, type AccountConfig, type Config, type ConfigStore } from './config'
+import { AccountViews } from './account-views'
+import {
+  moveAccount,
+  newAccount,
+  type AccountConfig,
+  type Config,
+  type ConfigStore
+} from './config'
 import { parseFeedAddress } from './feed'
-import { feedUrl, gmailUrl, isGmailUrl, isSignInPageUrl } from './google-urls'
+import { findProfilePhotoUrl } from './gmail-page'
+import { feedUrl, isProfilePhotoUrl } from './google-urls'
+import type { ProfilePhotos } from './profile-photos'
 import { SignInWindow } from './sign-in-window'
 
 function ignore(): void {
-  // A navigation that Shifted stopped, or a view that closed. Nothing to do.
+  // A request that failed or a view that closed. Nothing to do.
 }
+
+export type StateListener = (state: ShiftedState) => void
 
 export class Accounts {
   private config: Config
   private readonly status = new Map<string, AccountStatus>()
   /** The accounts that finished sign-in at least once. */
   private readonly signedInOnce = new Set<string>()
-  private readonly gmailViews = new Map<string, WebContentsView>()
   private readonly signInWindows = new Map<string, SignInWindow>()
   private readonly removals = new Map<string, Promise<void>>()
+  private readonly signOuts = new Map<string, Promise<void>>()
+  private readonly photoLookups = new Set<string>()
+  private readonly listeners = new Set<StateListener>()
   private selectedAccountId: string | null
   private mainWindow: BrowserWindow | null = null
-  private contentBounds: ViewBounds = { x: 0, y: 0, width: 0, height: 0 }
+  private views: AccountViews | null = null
 
-  constructor(private readonly store: ConfigStore) {
+  constructor(
+    private readonly store: ConfigStore,
+    private readonly photos: ProfilePhotos
+  ) {
     this.config = store.load()
     // An account in the configuration signed in before. Its session is on disk.
     for (const account of this.config.accounts) {
-      this.status.set(account.id, 'gmail')
+      this.status.set(account.id, 'signed-in')
       this.signedInOnce.add(account.id)
     }
     this.selectedAccountId = this.config.accounts[0]?.id ?? null
@@ -43,30 +68,38 @@ export class Accounts {
 
   state(): ShiftedState {
     return {
-      accounts: this.config.accounts.map((account) => ({
-        id: account.id,
-        email: account.email,
-        nickname: account.nickname,
-        color: account.color,
-        status: this.status.get(account.id) ?? 'gmail'
-      })),
+      accounts: this.config.accounts.map((account) => this.accountState(account)),
       selectedAccountId: this.selectedAccountId
+    }
+  }
+
+  /** One account as the screens of Shifted see it, or `undefined` if it does not exist. */
+  account(accountId: string): AccountState | undefined {
+    const account = this.findAccount(accountId)
+    return account ? this.accountState(account) : undefined
+  }
+
+  /** Call the listener each time the state changes. Returns a function that stops it. */
+  subscribe(listener: StateListener): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
     }
   }
 
   /** Show the accounts in the main window. Call it each time the main window opens. */
   attachMainWindow(window: BrowserWindow): void {
     this.mainWindow = window
-    window.on('closed', () => {
-      for (const view of this.gmailViews.values()) {
-        if (!view.webContents.isDestroyed()) view.webContents.close()
-      }
-      this.gmailViews.clear()
-      this.mainWindow = null
+    const views = new AccountViews(window, {
+      onSignedOut: (accountId) => this.setStatus(accountId, 'signed-out'),
+      onGmailLoaded: (accountId, gmail) => this.gmailLoaded(accountId, gmail)
     })
-    for (const account of this.config.accounts) {
-      if (this.status.get(account.id) === 'gmail') this.showGmail(account.id)
-    }
+    this.views = views
+    window.on('closed', () => {
+      views.closeAll()
+      if (this.views === views) this.views = null
+      if (this.mainWindow === window) this.mainWindow = null
+    })
     this.updateViews()
   }
 
@@ -84,8 +117,7 @@ export class Accounts {
   /** Put the Google page of the window that `sender` belongs to at these bounds. */
   setViewBounds(sender: WebContents, bounds: ViewBounds): void {
     if (this.isMainScreen(sender)) {
-      this.contentBounds = bounds
-      this.updateViews()
+      this.views?.setBounds(bounds)
       return
     }
     this.findSignInWindow(sender)?.setViewBounds(bounds)
@@ -100,15 +132,83 @@ export class Accounts {
     this.openSignInWindow(account.id)
   }
 
-  /** Open the sign-in window for an account that Google signed out. */
+  /** Show this account in the content area, with the Google app that it used last. */
+  selectAccount(accountId: string): void {
+    if (!this.findAccount(accountId) || this.removals.has(accountId)) return
+    if (this.selectedAccountId === accountId) return
+    this.selectedAccountId = accountId
+    this.updateViews()
+    this.publish()
+  }
+
+  /** Show this Google app of the selected account, and remember it for the account. */
+  selectGoogleApp(googleApp: GoogleApp): void {
+    const account = this.selectedAccountId ? this.findAccount(this.selectedAccountId) : undefined
+    if (!account || account.lastGoogleApp === googleApp) return
+    this.updateAccount(account.id, { lastGoogleApp: googleApp })
+    this.updateViews()
+  }
+
+  /** Move the account to a new place in the sidebar, and save the new order. */
+  moveAccount(accountId: string, toIndex: number): void {
+    if (!this.findAccount(accountId)) return
+    const accounts = moveAccount(this.config.accounts, accountId, toIndex)
+    const unchanged = accounts.every(
+      (account, index) =>
+        account.id === this.config.accounts[index]?.id &&
+        account.order === this.config.accounts[index]?.order
+    )
+    if (unchanged) return
+    this.config = { ...this.config, accounts }
+    this.store.save(this.config)
+    this.publish()
+  }
+
+  setNickname(accountId: string, nickname: string): void {
+    const value = nickname.trim().slice(0, MAX_NICKNAME_LENGTH)
+    const account = this.findAccount(accountId)
+    if (!account || account.nickname === value) return
+    this.updateAccount(accountId, { nickname: value })
+  }
+
+  /** Set the color of the account. Shifted ignores a color that is not in the set. */
+  setColor(accountId: string, color: string): void {
+    const value = findAccountColor(color)
+    const account = this.findAccount(accountId)
+    if (!value || !account || account.color === value) return
+    this.updateAccount(accountId, { color: value })
+  }
+
+  /**
+   * Sign the account out: close its views and its sign-in window, and clear its session.
+   * The content area then shows the signed-out panel.
+   */
+  signOut(accountId: string): Promise<void> {
+    const running = this.signOuts.get(accountId)
+    if (running) return running
+    if (!this.findAccount(accountId) || this.removals.has(accountId)) return Promise.resolve()
+    const signOut = this.signOutNow(accountId).finally(() => {
+      this.signOuts.delete(accountId)
+    })
+    this.signOuts.set(accountId, signOut)
+    return signOut
+  }
+
+  /** Open the sign-in window for an account that is signed out. */
   signInAgain(accountId: string): void {
     if (!this.findAccount(accountId) || this.removals.has(accountId)) return
-    if (this.status.get(accountId) === 'gmail') return
+    if (this.status.get(accountId) === 'signed-in') return
+    const signOut = this.signOuts.get(accountId)
+    if (signOut) {
+      // Wait until the session is clear, so that the sign-in window starts signed out.
+      void signOut.then(() => this.signInAgain(accountId))
+      return
+    }
     this.openSignInWindow(accountId)
   }
 
   /** Ask the person to confirm, then remove the account. */
-  async confirmAndRemove(accountId: string): Promise<void> {
+  async confirmAndRemove(accountId: string, parent?: BrowserWindow | null): Promise<void> {
     const account = this.findAccount(accountId)
     if (!account || this.removals.has(accountId)) return
     const options: Electron.MessageBoxOptions = {
@@ -120,7 +220,7 @@ export class Accounts {
       detail:
         'Shifted deletes the session of this account from this computer. To use the account again, add it and sign in again.'
     }
-    const window = this.mainWindow
+    const window = parent ?? this.mainWindow
     const { response } =
       window && !window.isDestroyed()
         ? await dialog.showMessageBox(window, options)
@@ -130,8 +230,8 @@ export class Accounts {
   }
 
   /**
-   * Close the views of the account, delete its session, and remove it from the
-   * configuration.
+   * Close the views of the account, delete its session and its photo, and remove it from
+   * the configuration.
    */
   remove(accountId: string): Promise<void> {
     const running = this.removals.get(accountId)
@@ -151,22 +251,20 @@ export class Accounts {
 
   private async removeNow(accountId: string): Promise<void> {
     // 1. Close the views of the account.
-    const signInWindow = this.signInWindows.get(accountId)
-    this.signInWindows.delete(accountId)
-    signInWindow?.close()
-    const view = this.gmailViews.get(accountId)
-    this.gmailViews.delete(accountId)
-    if (view) {
-      const window = this.mainWindow
-      if (window && !window.isDestroyed()) window.contentView.removeChildView(view)
-      if (!view.webContents.isDestroyed()) view.webContents.close()
-    }
+    this.closeSignInWindow(accountId)
+    this.views?.close(accountId)
+    await this.signOuts.get(accountId)?.catch(ignore)
 
     // 2. and 3. Clear the storage data of the session, and delete its partition folder.
     try {
       await deleteAccountSession(accountId)
     } catch (error) {
       console.error(`Shifted could not delete the session of account ${accountId}:`, error)
+    }
+    try {
+      this.photos.delete(accountId)
+    } catch (error) {
+      console.error(`Shifted could not delete the photo of account ${accountId}:`, error)
     }
 
     // 4. Remove the account from the configuration.
@@ -184,6 +282,14 @@ export class Accounts {
     this.publish()
   }
 
+  private async signOutNow(accountId: string): Promise<void> {
+    this.closeSignInWindow(accountId)
+    this.views?.close(accountId)
+    this.signedInOnce.add(accountId)
+    this.setStatus(accountId, 'signed-out')
+    await clearAccountSession(accountId)
+  }
+
   private openSignInWindow(accountId: string): void {
     const open = this.signInWindows.get(accountId)
     if (open) {
@@ -198,18 +304,29 @@ export class Accounts {
     this.setStatus(accountId, 'signing-in')
   }
 
+  /** Close the sign-in window of the account without the "closed" handling. */
+  private closeSignInWindow(accountId: string): void {
+    const signInWindow = this.signInWindows.get(accountId)
+    // Take the window out first, so that `signInWindowClosed` does nothing.
+    this.signInWindows.delete(accountId)
+    signInWindow?.close()
+  }
+
   private signInFinished(accountId: string): void {
     this.signedInOnce.add(accountId)
     // Write the new cookies to disk now, so that the account stays signed in.
     flushAccountSession(accountId).catch(ignore)
-    this.status.set(accountId, 'gmail')
-    this.showGmail(accountId)
+    this.status.set(accountId, 'signed-in')
+    // Load the views of the account again with the new session. Load Gmail even if the
+    // account is not selected, so that Shifted reads its address and its photo.
+    this.views?.reload(accountId)
+    this.views?.ensure(accountId, 'gmail')
     this.updateViews()
     this.publish()
   }
 
   private signInWindowClosed(accountId: string, window: SignInWindow, finished: boolean): void {
-    // A removal closes the sign-in window itself. It already took the window out.
+    // A removal or a sign-out closes the sign-in window itself. It already took it out.
     if (this.signInWindows.get(accountId) !== window) return
     this.signInWindows.delete(accountId)
     if (finished) return
@@ -221,42 +338,12 @@ export class Accounts {
     }
   }
 
-  /** Load Gmail of the account in its view. Make the view if it does not exist. */
-  private showGmail(accountId: string): void {
-    const existing = this.gmailViews.get(accountId)
-    if (existing) {
-      existing.webContents.loadURL(gmailUrl()).catch(ignore)
-      return
-    }
-    const window = this.mainWindow
-    if (!window || window.isDestroyed()) return
-
-    const view = new WebContentsView({
-      webPreferences: googlePageWebPreferences(accountSession(accountId))
+  /** Gmail of the account loaded: read its address and its profile photo. */
+  private gmailLoaded(accountId: string, gmail: WebContents): void {
+    this.readAddress(accountId).catch(ignore)
+    this.readPhoto(accountId, gmail).catch((error: unknown) => {
+      console.error(`Shifted could not read the photo of account ${accountId}:`, error)
     })
-    const page = view.webContents
-
-    // Prompt 03 adds the link rules. Until then, Gmail opens no new windows.
-    page.setWindowOpenHandler(() => ({ action: 'deny' }))
-
-    // Shifted never shows Google's sign-in page in the content area. If Gmail goes
-    // there, Google signed the account out.
-    const stopSignInPage = (event: Electron.Event, url: string, isMainFrame: boolean): void => {
-      if (!isMainFrame || !isSignInPageUrl(url)) return
-      event.preventDefault()
-      this.setStatus(accountId, 'signed-out')
-    }
-    page.on('will-navigate', (event) => stopSignInPage(event, event.url, event.isMainFrame))
-    page.on('will-redirect', (event) => stopSignInPage(event, event.url, event.isMainFrame))
-
-    page.on('did-finish-load', () => {
-      if (isGmailUrl(page.getURL())) this.readAddress(accountId).catch(ignore)
-    })
-
-    view.setVisible(false)
-    window.contentView.addChildView(view)
-    this.gmailViews.set(accountId, view)
-    page.loadURL(gmailUrl()).catch(ignore)
   }
 
   /** Read the email address of the account from the title of its Atom feed. */
@@ -267,6 +354,23 @@ export class Accounts {
     const account = this.findAccount(accountId)
     if (!address || !account || account.email === address) return
     this.updateAccount(accountId, { email: address })
+  }
+
+  /**
+   * Find the profile photo in the Gmail page, download it with the session of the
+   * account, and save it. If the page shows no photo, Shifted keeps the saved photo.
+   */
+  private async readPhoto(accountId: string, gmail: WebContents): Promise<void> {
+    if (this.photoLookups.has(accountId)) return
+    this.photoLookups.add(accountId)
+    try {
+      const url = await findProfilePhotoUrl(gmail)
+      if (!url || !isProfilePhotoUrl(url) || !this.findAccount(accountId)) return
+      const changed = await this.photos.download(accountId, accountSession(accountId), url)
+      if (changed && this.findAccount(accountId)) this.publish()
+    } finally {
+      this.photoLookups.delete(accountId)
+    }
   }
 
   private updateAccount(accountId: string, change: Partial<AccountConfig>): void {
@@ -287,20 +391,39 @@ export class Accounts {
     this.publish()
   }
 
-  /** Show the Gmail view of the selected account if its status is `gmail`. Hide the others. */
+  /**
+   * Show the Google app that the selected account used last, if the account is signed
+   * in. Make its view if it does not exist yet. Hide every other view.
+   */
   private updateViews(): void {
-    for (const [accountId, view] of this.gmailViews) {
-      view.setBounds(this.contentBounds)
-      view.setVisible(
-        accountId === this.selectedAccountId && this.status.get(accountId) === 'gmail'
-      )
+    const views = this.views
+    if (!views) return
+    const account = this.selectedAccountId ? this.findAccount(this.selectedAccountId) : undefined
+    if (!account || this.status.get(account.id) !== 'signed-in' || this.removals.has(account.id)) {
+      views.show(null)
+      return
     }
+    views.ensure(account.id, account.lastGoogleApp)
+    views.show({ accountId: account.id, googleApp: account.lastGoogleApp })
   }
 
   private publish(): void {
+    const state = this.state()
     const window = this.mainWindow
-    if (!window || window.isDestroyed()) return
-    window.webContents.send(IpcChannel.stateChanged, this.state())
+    if (window && !window.isDestroyed()) window.webContents.send(IpcChannel.stateChanged, state)
+    for (const listener of this.listeners) listener(state)
+  }
+
+  private accountState(account: AccountConfig): AccountState {
+    return {
+      id: account.id,
+      email: account.email,
+      nickname: account.nickname,
+      color: account.color,
+      status: this.status.get(account.id) ?? 'signed-in',
+      lastGoogleApp: account.lastGoogleApp,
+      photo: this.photos.dataUrl(account.id)
+    }
   }
 
   private findAccount(accountId: string): AccountConfig | undefined {

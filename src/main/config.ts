@@ -6,15 +6,15 @@
 import { randomUUID } from 'node:crypto'
 import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { ACCOUNT_COLORS, isGoogleApp, isSameColor, type GoogleApp } from '../shared/api'
+
+export { ACCOUNT_COLORS, type GoogleApp }
 
 /** The version of the format of the configuration file. A later prompt can change it. */
 export const CONFIG_VERSION = 1
 
 export const CONFIG_FILE_NAME = 'config.json'
 export const BROKEN_CONFIG_FILE_NAME = 'config.broken.json'
-
-/** The Google apps of an account. */
-export type GoogleApp = 'gmail' | 'calendar'
 
 /** One account in the configuration. */
 export interface AccountConfig {
@@ -23,7 +23,7 @@ export interface AccountConfig {
   /** The email address. Empty until Shifted reads it from the Atom feed. */
   email: string
   nickname: string
-  /** The account color, for example `#1a73e8`. */
+  /** The account color, for example `#1A73E8`. */
   color: string
   /** The place of the account in the sidebar. The first account has order 0. */
   order: number
@@ -35,18 +35,6 @@ export interface Config {
   version: typeof CONFIG_VERSION
   accounts: AccountConfig[]
 }
-
-/** The fixed set of 8 account colors. Each new account gets the next color. */
-export const ACCOUNT_COLORS: readonly string[] = [
-  '#1a73e8',
-  '#d93025',
-  '#188038',
-  '#f9ab00',
-  '#9334e6',
-  '#e8710a',
-  '#12a4af',
-  '#d01884'
-]
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -70,7 +58,7 @@ function parseAccount(value: unknown): AccountConfig | undefined {
   if (typeof email !== 'string' || typeof nickname !== 'string') return undefined
   if (typeof color !== 'string' || color === '') return undefined
   if (typeof order !== 'number' || !Number.isInteger(order) || order < 0) return undefined
-  if (lastGoogleApp !== 'gmail' && lastGoogleApp !== 'calendar') return undefined
+  if (!isGoogleApp(lastGoogleApp)) return undefined
   return { id, email, nickname, color, order, lastGoogleApp }
 }
 
@@ -97,21 +85,56 @@ export function parseConfig(value: unknown): Config | undefined {
 }
 
 /**
- * Make a new account. It gets a new UUID, the next order, and the color after the
- * color of the last account.
+ * The color of a new account: the next color of the set.
+ *
+ * With `n` accounts, the next color is color `n mod 8` of the set. If an account already
+ * uses that color, Shifted takes the first color after it that no account uses. When all
+ * 8 colors are in use, the set repeats.
  */
+export function nextAccountColor(existing: readonly AccountConfig[]): string {
+  const start = existing.length % ACCOUNT_COLORS.length
+  for (let step = 0; step < ACCOUNT_COLORS.length; step++) {
+    const color = ACCOUNT_COLORS[(start + step) % ACCOUNT_COLORS.length] ?? ACCOUNT_COLORS[0]
+    if (!existing.some((account) => isSameColor(account.color, color))) return color
+  }
+  return ACCOUNT_COLORS[start] ?? ACCOUNT_COLORS[0]
+}
+
+/** Make a new account. It gets a new UUID, the next order, and the next color. */
 export function newAccount(existing: readonly AccountConfig[]): AccountConfig {
-  const last = [...existing].sort((a, b) => a.order - b.order).at(-1)
-  const lastColorIndex = last ? ACCOUNT_COLORS.indexOf(last.color) : -1
-  const color = ACCOUNT_COLORS[(lastColorIndex + 1) % ACCOUNT_COLORS.length] ?? '#1a73e8'
+  const lastOrder = Math.max(-1, ...existing.map((account) => account.order))
   return {
     id: randomUUID(),
     email: '',
     nickname: '',
-    color,
-    order: last ? last.order + 1 : 0,
+    color: nextAccountColor(existing),
+    order: lastOrder + 1,
     lastGoogleApp: 'gmail'
   }
+}
+
+/**
+ * Move one account to a new place in the sidebar.
+ *
+ * @param accounts The accounts, in any order.
+ * @param accountId The account to move.
+ * @param toIndex The new place. 0 is the top. A value out of range moves the account to
+ *   the nearest end.
+ * @returns The accounts in the new order, with the order values 0, 1, 2, and so on.
+ */
+export function moveAccount(
+  accounts: readonly AccountConfig[],
+  accountId: string,
+  toIndex: number
+): AccountConfig[] {
+  const sorted = [...accounts].sort((a, b) => a.order - b.order)
+  const from = sorted.findIndex((account) => account.id === accountId)
+  if (from !== -1) {
+    const [moved] = sorted.splice(from, 1)
+    const to = Math.min(Math.max(0, Math.trunc(toIndex) || 0), sorted.length)
+    if (moved) sorted.splice(to, 0, moved)
+  }
+  return sorted.map((account, order) => ({ ...account, order }))
 }
 
 /** Reads and writes `config.json` in one folder. */

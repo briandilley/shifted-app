@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { calendarUrl, feedUrl, gmailUrl, isTestMode, signInUrl } from '../../src/main/google-urls'
+import {
+  calendarUrl,
+  feedUrl,
+  gmailUrl,
+  isProfilePhotoUrl,
+  isTestMode,
+  signInUrl
+} from '../../src/main/google-urls'
 
 const SRC = resolve(__dirname, '../../src')
 const GOOGLE_URLS_FILE = join(SRC, 'main', 'google-urls.ts')
@@ -47,6 +54,22 @@ describe('google-urls', () => {
     expect(signInUrl()).toBe('http://127.0.0.1:4555/signin')
     expect(feedUrl()).toBe('http://127.0.0.1:4555/feed/atom/')
     expect(feedUrl('%5Eiim')).toBe('http://127.0.0.1:4555/feed/atom/%5Eiim')
+  })
+
+  it('accepts profile photo URLs only on Google photo hosts with https', () => {
+    expect(isProfilePhotoUrl('https://lh3.googleusercontent.com/ogw/abc=s64-c-mo')).toBe(true)
+    expect(isProfilePhotoUrl('https://ssl.gstatic.com/accounts/ui/avatar_2x.png')).toBe(true)
+    expect(isProfilePhotoUrl('http://lh3.googleusercontent.com/ogw/abc')).toBe(false)
+    expect(isProfilePhotoUrl('https://evilgoogleusercontent.com/a.png')).toBe(false)
+    expect(isProfilePhotoUrl('https://example.com/a.png')).toBe(false)
+    expect(isProfilePhotoUrl('not a url')).toBe(false)
+  })
+
+  it('accepts profile photo URLs only on the fake server in test mode', () => {
+    process.env['SHIFTED_TEST_SERVER'] = 'http://127.0.0.1:4555'
+    expect(isProfilePhotoUrl('http://127.0.0.1:4555/avatar.png')).toBe(true)
+    expect(isProfilePhotoUrl('http://127.0.0.1:4556/avatar.png')).toBe(false)
+    expect(isProfilePhotoUrl('https://lh3.googleusercontent.com/ogw/abc')).toBe(false)
   })
 
   it('accepts a test server URL with a trailing slash', () => {

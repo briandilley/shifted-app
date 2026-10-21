@@ -105,3 +105,21 @@ export function isSignInPageUrl(url: string): boolean {
     parsed.hostname === SIGN_IN_HOST
   )
 }
+
+/** The hosts that serve Google profile photos, and every host below them. */
+const PROFILE_PHOTO_HOSTS = ['googleusercontent.com', 'gstatic.com', 'google.com']
+
+/**
+ * True when Shifted may download a profile photo from this URL: an `https:` URL on a
+ * Google host that serves profile photos. In test mode, true for a URL on the fake server.
+ */
+export function isProfilePhotoUrl(url: string): boolean {
+  const parsed = parseUrl(url)
+  if (!parsed) return false
+  const server = testServerUrl()
+  if (server) return parsed.origin === new URL(server).origin
+  if (parsed.protocol !== 'https:') return false
+  return PROFILE_PHOTO_HOSTS.some(
+    (host) => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`)
+  )
+}

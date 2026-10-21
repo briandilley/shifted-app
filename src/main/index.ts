@@ -1,9 +1,13 @@
 import { app, BrowserWindow } from 'electron'
+import { join } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { Accounts } from './accounts'
+import { setAppMenu } from './app-menu'
 import { ConfigStore } from './config'
 import { registerIpc } from './ipc'
+import { ProfilePhotos } from './profile-photos'
+import { SettingsWindow } from './settings-window'
 import {
   loadShiftedScreen,
   lockShiftedScreen,
@@ -70,8 +74,14 @@ void app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  const accounts = new Accounts(new ConfigStore(app.getPath('userData')))
-  registerIpc(accounts)
+  const userData = app.getPath('userData')
+  const accounts = new Accounts(
+    new ConfigStore(userData),
+    new ProfilePhotos(join(userData, 'photos'))
+  )
+  const settings = new SettingsWindow(accounts)
+  registerIpc(accounts, settings)
+  setAppMenu({ openSettings: () => settings.open() })
   createMainWindow(accounts)
 
   // A removal deletes a session from disk. Let it end before Shifted quits.
@@ -83,7 +93,11 @@ void app.whenReady().then(() => {
   })
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow(accounts)
+    if (
+      !BrowserWindow.getAllWindows().some((window) => accounts.isMainScreen(window.webContents))
+    ) {
+      createMainWindow(accounts)
+    }
   })
 })
 
