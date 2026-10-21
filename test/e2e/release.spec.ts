@@ -85,13 +85,26 @@ test('the sign-in window is 480 by 720 points, with the title "Sign in"', async 
   await mainWindow.getByRole('button', { name: 'Add account' }).click()
   await expect(mainWindow.getByText('Signing in…')).toBeVisible()
   await findPage(shifted, (url) => url === `${fakeGoogle.url}/signin`)
-  const signInWindow = await shifted.evaluate(({ BrowserWindow }) => {
+  const signInWindow = await shifted.evaluate(({ BrowserWindow, screen }) => {
     const window = BrowserWindow.getAllWindows().find((candidate) =>
       candidate.webContents.getURL().includes('#sign-in')
     )
-    return { size: window?.getContentSize(), title: window?.getTitle() }
+    if (!window) return null
+    return {
+      size: window.getContentSize(),
+      frameHeight: window.getSize()[1] ?? 0,
+      title: window.getTitle(),
+      workAreaHeight: screen.getDisplayMatching(window.getBounds()).workArea.height
+    }
   })
-  expect(signInWindow).toEqual({ size: [480, 720], title: 'Sign in' })
+  // Shifted asks for 480 by 720 points. On a screen that is too small for that, for
+  // example the 1024 by 768 screen of the GitHub Actions runners, macOS and Windows make
+  // the window as tall as the work area of the screen. Then the content is the work area
+  // less the title bar and the frame.
+  const frame = (signInWindow?.frameHeight ?? 0) - (signInWindow?.size[1] ?? 0)
+  const fittingHeight = Math.min(720, (signInWindow?.workAreaHeight ?? 0) - frame)
+  expect(signInWindow?.title).toBe('Sign in')
+  expect(signInWindow?.size).toEqual([480, fittingHeight])
 })
 
 test.describe('with a fake microphone', () => {

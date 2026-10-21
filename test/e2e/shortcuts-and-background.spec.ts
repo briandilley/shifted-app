@@ -373,12 +373,11 @@ test('the main window comes back at its saved size and position', async ({
   userDataDir
 }) => {
   const first = await launchShifted(fakeGoogle, userDataDir)
-  let bounds = { x: 0, y: 0, width: 0, height: 0 }
-  try {
-    // A place that is not the default (1200 by 800, centered), inside the work area of the
-    // main screen. The screen of a test computer can be small (1024 by 768 on the macOS
-    // runner of GitHub Actions), and macOS moves a window that does not fit onto the screen.
-    bounds = await first.evaluate(({ screen }) => {
+  // A place that is not the default (1200 by 800, centered), inside the work area of the
+  // main screen. The screen of a test computer can be small (1024 by 768 on the macOS
+  // runner of GitHub Actions), and macOS moves a window that does not fit onto the screen.
+  const bounds = await first
+    .evaluate(({ screen }) => {
       const area = screen.getPrimaryDisplay().workArea
       return {
         x: area.x + 40,
@@ -387,6 +386,11 @@ test('the main window comes back at its saved size and position', async ({
         height: Math.max(600, Math.min(700, area.height - 60))
       }
     })
+    .catch(async (error: unknown) => {
+      await first.close()
+      throw error
+    })
+  try {
     const mainWindow = await mainWindowPage(first)
     await expect(mainWindow.getByText('No accounts yet')).toBeVisible()
     await first.evaluate(({ BrowserWindow }, wanted) => {
