@@ -25,6 +25,7 @@ import {
 } from './shifted-screens'
 import { appBadgeTotal } from './unread-counts'
 import { applyUserAgent } from './user-agent'
+import { MainWindowBackdrop, mainWindowBackdrop, mainWindowFrameOptions } from './window-frame'
 
 /** The bundle identifier of Shifted. See "Name" in `docs/spec/PRODUCT.md`. */
 const APP_ID = 'io.github.briandilley.shifted'
@@ -83,9 +84,18 @@ function createMainWindow(accounts: Accounts, badge: AppBadge): BrowserWindow {
     height: 800,
     show: false,
     autoHideMenuBar: true,
+    // The frame of `DESIGN.md`, and the backdrop of the selected account as the background
+    // color, so that no white flash shows at startup.
+    ...mainWindowFrameOptions(mainWindowBackdrop(accounts.state())),
     ...(process.platform !== 'darwin' ? { icon } : {}),
     webPreferences: shiftedScreenWebPreferences()
   })
+
+  // The background color and the window buttons follow the backdrop of the selected
+  // account and the light or dark mode.
+  const backdrop = new MainWindowBackdrop(mainWindow, () => accounts.state())
+  const stopBackdrop = accounts.subscribe(() => backdrop.update())
+  mainWindow.on('closed', stopBackdrop)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()

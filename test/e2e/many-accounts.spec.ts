@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ElectronApplication, Page } from '@playwright/test'
+import { accountBackdrop, type ColorMode } from '../../src/shared/account-colors'
 import type { FakeGoogleServer } from '../fake-google/server'
 import {
   addAccountAndSignIn,
@@ -36,6 +37,29 @@ async function addAccounts(
   emails: string[]
 ): Promise<void> {
   for (const email of emails) await addAccountAndSignIn(app, mainWindow, fakeGoogle, email)
+}
+
+/** A color `#RRGGBB` as the computed style of a page writes it: `rgb(r, g, b)`. */
+function cssRgb(hex: string): string {
+  const [r, g, b] = [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16))
+  return `rgb(${r}, ${g}, ${b})`
+}
+
+/** The background color of the frame view of the main window, as the page computes it. */
+function frameViewBackground(mainWindow: Page): Promise<string> {
+  return mainWindow
+    .locator('[data-frame-view]')
+    .evaluate((frame) => getComputedStyle(frame).backgroundColor)
+}
+
+/** The background color of the main window, as `BrowserWindow.getBackgroundColor` gives it. */
+function mainWindowBackgroundColor(app: ElectronApplication): Promise<string | undefined> {
+  return app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((window) => !window.webContents.getURL().includes('#'))
+      ?.getBackgroundColor()
+      .toUpperCase()
+  )
 }
 
 /** The id of the account with this address in `config.json`. */
@@ -78,6 +102,31 @@ test('three accounts: each one shows its own Gmail, avatar, and color', async ({
     await expect.poll(() => existsSync(photo)).toBe(true)
     await expect(sidebarAccount(mainWindow, email).locator('img')).toBeVisible()
   }
+})
+
+test('switch from account 1 to account 2: the frame view takes the backdrop of account 2', async ({
+  shifted,
+  mainWindow,
+  fakeGoogle,
+  userDataDir
+}) => {
+  await addAccounts(shifted, mainWindow, fakeGoogle, [ONE, TWO])
+  const mode: ColorMode = await mainWindow.evaluate(() =>
+    matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  )
+  const [colorOne, colorTwo] = readConfig(userDataDir).accounts.map((account) => account.color)
+  const backdropOne = accountBackdrop(colorOne, mode)
+  const backdropTwo = accountBackdrop(colorTwo, mode)
+  expect(backdropOne).not.toBe(backdropTwo)
+
+  await sidebarAccount(mainWindow, ONE).click()
+  await expect.poll(() => frameViewBackground(mainWindow)).toBe(cssRgb(backdropOne))
+  await expect.poll(() => mainWindowBackgroundColor(shifted)).toBe(backdropOne)
+
+  await sidebarAccount(mainWindow, TWO).click()
+  await expect(sidebarAccount(mainWindow, TWO)).toHaveAttribute('aria-current', 'true')
+  await expect.poll(() => frameViewBackground(mainWindow)).toBe(cssRgb(backdropTwo))
+  await expect.poll(() => mainWindowBackgroundColor(shifted)).toBe(backdropTwo)
 })
 
 test('the Calendar tab stays selected when you switch to another account and back', async ({
@@ -185,6 +234,24 @@ test('rename an account in the configuration window: the sidebar shows the nickn
   await settings.getByRole('radio', { name: 'Purple' }).check()
   await expect.poll(() => readConfig(userDataDir).accounts[1]?.color).toBe('#A142F4')
   await expect(account.locator('[data-color]')).toHaveAttribute('data-color', '#A142F4')
+
+  // The backdrop of the main window and of the account page takes the new tint at once.
+  const mode: ColorMode = await mainWindow.evaluate(() =>
+    matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  )
+  const purple = cssRgb(accountBackdrop('#A142F4', mode))
+  await expect.poll(() => frameViewBackground(mainWindow)).toBe(purple)
+  const settingsBackdrop = (): Promise<string> =>
+    settings
+      .locator('[data-backdrop]')
+      .evaluate((element) => getComputedStyle(element).backgroundColor)
+  await expect.poll(settingsBackdrop).toBe(purple)
+  // The backdrop of the General page is --base.
+  await settings
+    .getByRole('navigation', { name: 'Settings pages' })
+    .getByRole('button', { name: 'General' })
+    .click()
+  await expect.poll(settingsBackdrop).toBe(cssRgb(accountBackdrop(null, mode)))
 })
 
 test('remove an account from the context menu: it is gone from the sidebar and the configuration', async ({

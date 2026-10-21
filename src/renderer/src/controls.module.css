@@ -1,0 +1,121 @@
+/*
+ * The controls of the screens of Shifted: buttons, toggles, selects, and text fields.
+ * See "Controls" in docs/spec/DESIGN.md. The focus outline is in assets/main.css.
+ */
+
+/* Primary button: --text fill with --surface text. */
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  min-height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 550;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.primaryButton {
+  background: var(--text);
+  color: var(--surface);
+}
+
+/* Secondary button: --field fill with --text text. */
+.secondaryButton {
+  background: var(--field);
+  color: var(--text);
+}
+
+.primaryButton:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--separator);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/*
+ * Toggle: 34 by 20, with a knob of 16. Off is --toggle-off, on is --accent. The knob
+ * moves in 150 ms. Use it on `<input type="checkbox" role="switch">`.
+ */
+.toggle {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  border-radius: 10px;
+  appearance: none;
+  background: var(--toggle-off);
+  cursor: pointer;
+}
+
+.toggle::before {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  content: '';
+  transition: transform 150ms ease-out;
+}
+
+.toggle:checked {
+  background: var(--accent);
+}
+
+.toggle:checked::before {
+  transform: translateX(14px);
+}
+
+.toggle:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* Select: --surface fill with a 1-point inside border in --separator, radius 7. */
+.select {
+  max-width: 320px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--separator);
+  color: var(--text);
+}
+
+/* Text field: --field fill, radius 7. */
+.textField {
+  max-width: 320px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: var(--field);
+  color: var(--text);
+}
+
+.textField::placeholder {
+  color: var(--text-secondary);
+}
+
+.textField:disabled,
+.select:disabled {
+  opacity: 0.45;
+}

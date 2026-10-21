@@ -13,6 +13,7 @@ import {
   lockShiftedScreen,
   shiftedScreenWebPreferences
 } from './shifted-screens'
+import { baseBackgroundColor, followBaseBackground } from './window-frame'
 
 export const SETTINGS_WINDOW_TITLE = 'Settings'
 
@@ -44,6 +45,7 @@ export class SettingsWindow {
 
     const window = new BrowserWindow({
       title: SETTINGS_WINDOW_TITLE,
+      backgroundColor: baseBackgroundColor(),
       width: 720,
       height: 520,
       minWidth: 560,
@@ -55,6 +57,7 @@ export class SettingsWindow {
     })
     this.window = window
     lockShiftedScreen(window.webContents)
+    followBaseBackground(window)
 
     // The window keeps its title. The React page has the title of the main window.
     window.on('page-title-updated', (event) => {

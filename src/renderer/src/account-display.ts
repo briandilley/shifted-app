@@ -1,4 +1,4 @@
-import { ACCOUNT_COLOR_NAMES, type AccountState, type GoogleApp } from '../../shared/api'
+import { accountColorName, type AccountState, type GoogleApp } from '../../shared/api'
 
 /** The account name is the email address. A new account has no address yet. */
 export function accountName(account: AccountState): string {
@@ -50,7 +50,7 @@ export function textColorOn(color: string): string {
 
 /** The name of an account color, for example "Blue". */
 export function colorName(color: string): string {
-  return ACCOUNT_COLOR_NAMES[color.toUpperCase()] ?? color
+  return accountColorName(color)
 }
 
 export const GOOGLE_APP_NAMES: Readonly<Record<GoogleApp, string>> = {

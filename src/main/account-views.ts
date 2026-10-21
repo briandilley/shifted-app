@@ -10,6 +10,7 @@ import { GOOGLE_APPS, type GoogleApp, type ViewBounds } from '../shared/api'
 import { accountSession, googlePageWebPreferences } from './account-session'
 import { calendarUrl, gmailUrl, isGmailUrl } from './google-urls'
 import { applyLinkRules, type LinkHandlers } from './link-handlers'
+import { GOOGLE_VIEW_RADIUS } from './window-frame'
 
 export interface AccountViewHandlers {
   /** The link rules of the account pages. */
@@ -134,6 +135,8 @@ export class AccountViews {
     const view = new WebContentsView({
       webPreferences: googlePageWebPreferences(accountSession(accountId), true)
     })
+    // The content area is a card with four rounded corners.
+    view.setBorderRadius(GOOGLE_VIEW_RADIUS)
     const page = view.webContents
 
     // The link rules decide where each link and each new window goes. They also stop

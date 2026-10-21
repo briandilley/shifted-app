@@ -1,26 +1,42 @@
+/*
+ * The account picker: one card in --surface on the backdrop. See "The other windows" in
+ * docs/spec/DESIGN.md.
+ */
 .window {
   display: flex;
   height: 100%;
   flex-direction: column;
+  background: var(--base);
 }
 
 .header {
-  padding: 16px 20px 8px;
+  padding: 14px 20px 4px;
 }
 
 .title {
   margin: 0;
   overflow: hidden;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .note {
-  margin: 4px 0 0;
-  color: var(--text-muted);
-  font-size: 13px;
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+
+.card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  margin: 10px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--surface-shadow);
+  overflow: hidden;
 }
 
 .accounts {
@@ -30,7 +46,7 @@
   flex-direction: column;
   gap: 2px;
   margin: 0;
-  padding: 4px 12px;
+  padding: 6px;
   list-style: none;
   overflow-y: auto;
 }
@@ -39,30 +55,29 @@
   display: flex;
   width: 100%;
   min-height: 52px;
+  flex: none;
   align-items: center;
   gap: 12px;
-  padding: 6px 8px;
-  border: 1px solid transparent;
+  padding: 6px 10px;
+  border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--text);
   cursor: pointer;
-  font: inherit;
   text-align: left;
 }
 
 .account:hover {
-  background: var(--button-hover);
+  background: var(--field);
 }
 
+/*
+ * The selected row: 14% of the account color over --surface, with an inside border of 1.5
+ * points of the account color at 55%.
+ */
 .account[aria-selected='true'] {
-  border-color: var(--border);
-  background: var(--selected-background);
-}
-
-.account:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: -2px;
+  background: color-mix(in srgb, var(--account-color) 14%, var(--surface));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--account-color) 55%, transparent);
 }
 
 .names {
@@ -80,19 +95,18 @@
 }
 
 .name {
-  font-size: 14px;
   font-weight: 600;
 }
 
 .address {
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
 }
 
 .status {
   flex: none;
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
 }
 
 .footer {
@@ -100,32 +114,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--border);
+  padding: 2px 20px 14px;
 }
 
 .always {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-}
-
-.button {
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--button-background);
-  color: var(--text);
-  font: inherit;
-  font-size: 13px;
-}
-
-.button:hover {
-  background: var(--button-hover);
-}
-
-.button:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
 }

@@ -17,6 +17,7 @@ import {
   lockShiftedScreen,
   shiftedScreenWebPreferences
 } from './shifted-screens'
+import { baseBackgroundColor, followBaseBackground, GOOGLE_VIEW_RADIUS } from './window-frame'
 
 export const SIGN_IN_WINDOW_WIDTH = 480
 export const SIGN_IN_WINDOW_HEIGHT = 720
@@ -40,6 +41,7 @@ export class SignInWindow {
   constructor(accountSession: Session, handlers: SignInWindowHandlers) {
     this.window = new BrowserWindow({
       title: 'Sign in',
+      backgroundColor: baseBackgroundColor(),
       width: SIGN_IN_WINDOW_WIDTH,
       height: SIGN_IN_WINDOW_HEIGHT,
       useContentSize: true,
@@ -49,8 +51,12 @@ export class SignInWindow {
       webPreferences: shiftedScreenWebPreferences()
     })
     lockShiftedScreen(this.window.webContents)
+    followBaseBackground(this.window)
 
     this.view = new WebContentsView({ webPreferences: googlePageWebPreferences(accountSession) })
+    // Google's page shows in a card with a radius of 12. See "The other windows" in
+    // `docs/spec/DESIGN.md`.
+    this.view.setBorderRadius(GOOGLE_VIEW_RADIUS)
     this.window.contentView.addChildView(this.view)
     const page = this.view.webContents
 

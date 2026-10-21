@@ -13,40 +13,8 @@ export function isGoogleApp(value: unknown): value is GoogleApp {
   return value === 'gmail' || value === 'calendar'
 }
 
-/** The fixed set of 8 account colors. Each new account gets the next color. */
-export const ACCOUNT_COLORS = [
-  '#1A73E8',
-  '#D93025',
-  '#188038',
-  '#F9AB00',
-  '#A142F4',
-  '#12B5CB',
-  '#E8710A',
-  '#5F6368'
-] as const
-
-/** The names of the account colors, for screen readers. */
-export const ACCOUNT_COLOR_NAMES: Readonly<Record<string, string>> = {
-  '#1A73E8': 'Blue',
-  '#D93025': 'Red',
-  '#188038': 'Green',
-  '#F9AB00': 'Yellow',
-  '#A142F4': 'Purple',
-  '#12B5CB': 'Cyan',
-  '#E8710A': 'Orange',
-  '#5F6368': 'Grey'
-}
-
-/** True when two colors are the same, without regard to upper or lower case. */
-export function isSameColor(a: string, b: string): boolean {
-  return a.toLowerCase() === b.toLowerCase()
-}
-
-/** The color of the set that equals the value, or `undefined` if it is not in the set. */
-export function findAccountColor(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined
-  return ACCOUNT_COLORS.find((color) => isSameColor(color, value))
-}
+// The account colors live in `account-colors.ts`, with the backdrops of `DESIGN.md`.
+export { ACCOUNT_COLORS, accountColorName, findAccountColor, isSameColor } from './account-colors'
 
 /** The longest nickname that Shifted keeps. */
 export const MAX_NICKNAME_LENGTH = 100

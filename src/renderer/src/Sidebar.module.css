@@ -1,126 +1,155 @@
+/*
+ * The sidebar: 76 wide, with no fill, so the backdrop shows through. See "The main
+ * window" and "Selection tile" in docs/spec/DESIGN.md. All sizes are in points.
+ *
+ * The sidebar starts where the rounded top-left corner of the content area ends (y 40 +
+ * 12), and the list has 14 above and below its slots for the inverse corners. So the
+ * inverse corners of the selection tile always meet the straight left edge of the content
+ * area.
+ */
 .sidebar {
+  position: absolute;
+  z-index: 2;
+  top: calc(40px + 12px);
+  bottom: calc(10px + 12px);
+  left: 0;
   display: flex;
-  width: 68px;
-  min-height: 0;
-  flex: none;
+  width: 76px;
   flex-direction: column;
-  align-items: center;
-  padding: 10px 0;
-  border-right: 1px solid var(--border);
-  background: var(--sidebar-background);
 }
 
 .list {
+  position: relative;
   display: flex;
-  width: 100%;
   min-height: 0;
   flex: 0 1 auto;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
-  padding: 0;
+  padding: 14px 0;
   overflow-y: auto;
   list-style: none;
+  scrollbar-width: none;
 }
 
+/* Each account has a slot 52 high. The slot goes from x 12 to the content area. */
 .item {
   position: relative;
+  z-index: 1;
   display: flex;
-  width: 100%;
+  height: 52px;
   flex: none;
-  justify-content: center;
-}
-
-/* The selected account has a bar on the left edge and a light background. */
-.item::before {
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 0;
-  width: 4px;
-  border-radius: 0 3px 3px 0;
-  background: transparent;
-  content: '';
-}
-
-.selected::before {
-  background: var(--text);
+  padding-left: 12px;
 }
 
 .dragging {
   opacity: 0.55;
 }
 
+/*
+ * The selection tile: --surface, from x 12 to the left edge of the content area, 52 high.
+ * Its left corners have a radius of 14. Its right side joins the content area.
+ */
+.selectionTile {
+  position: absolute;
+  top: 14px;
+  left: 12px;
+  width: 64px;
+  height: 52px;
+  border-radius: 14px 0 0 14px;
+  background: var(--surface);
+  transform: translateY(var(--tile-offset));
+  transition: transform 200ms ease-out;
+}
+
+/* Two inverse corners with a radius of 14, above and below the right end of the tile. */
+.selectionTile::before,
+.selectionTile::after {
+  position: absolute;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  content: '';
+}
+
+.selectionTile::before {
+  bottom: 100%;
+  background: radial-gradient(circle at 0 0, transparent 14px, var(--surface) 14.5px);
+}
+
+.selectionTile::after {
+  top: 100%;
+  background: radial-gradient(circle at 0 100%, transparent 14px, var(--surface) 14.5px);
+}
+
+/* The avatar is 38 across, in the middle of the slot. */
 .account {
   position: relative;
   display: flex;
-  padding: 4px;
+  width: 64px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: none;
-  border-radius: 14px;
+  border-radius: 14px 0 0 14px;
   background: transparent;
   cursor: pointer;
 }
 
-.account:hover {
-  background: var(--button-hover);
+.item:not(.selected) .account:hover {
+  background: var(--field);
 }
 
-.selected .account {
-  background: var(--selected-background);
-}
-
-.account:focus-visible,
-.addAccount:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
-}
-
-/* The unread badge on the top right corner of the avatar. */
+/*
+ * The unread badge: a pill, 18 high, at least 18 wide, with a radius of 9. Its top-right
+ * corner is at the top-right corner of the 52 by 52 square around the avatar.
+ */
 .badge {
   position: absolute;
   top: 0;
-  right: 0;
+  right: 6px;
   display: flex;
-  min-width: 20px;
-  height: 20px;
+  min-width: 18px;
+  height: 18px;
   align-items: center;
   justify-content: center;
   padding: 0 5px;
-  border: 2px solid var(--sidebar-background);
-  border-radius: 10px;
-  background: var(--badge-background);
+  border-radius: 9px;
+  background: var(--badge);
   color: var(--badge-text);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   pointer-events: none;
 }
 
-/* The warning mark: the last read of the feed failed. Its tooltip says why. */
+/* The warning badge: a white "!" on --warning. Its tooltip says why. */
 .warning {
-  background: var(--warning-background);
-  color: var(--warning-text);
+  background: var(--warning);
+  color: #ffffff;
   pointer-events: auto;
 }
 
+/* The add-account button: a circle, 38 across, with a dashed 1.5-point border. */
 .addAccount {
   display: flex;
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   flex: none;
   align-items: center;
   justify-content: center;
-  margin-top: 8px;
-  border: 1px dashed var(--border-strong);
+  margin: 10px 0 0 25px;
+  padding: 0;
+  border: 1.5px dashed var(--text-secondary);
   border-radius: 50%;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
 .addAccount:hover {
-  background: var(--button-hover);
+  background: var(--field);
   color: var(--text);
 }

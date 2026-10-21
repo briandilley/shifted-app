@@ -1,20 +1,27 @@
+/* See "The other windows" in docs/spec/DESIGN.md. */
 .window {
   display: flex;
   height: 100%;
   flex-direction: column;
+  background: var(--base);
 }
 
+/* The line of help: on the backdrop, in --text-secondary, 12 px. */
 .topLine {
   flex: none;
   margin: 0;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--notice-background);
+  padding: 10px 14px 0;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
 }
 
+/* The card of Google's page: a margin of 10 and a radius of 12. */
 .signInPage {
   min-height: 0;
   flex: 1;
+  margin: 10px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--surface-shadow);
 }

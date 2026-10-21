@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { Plus } from 'lucide-react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { unreadBadgeText, type AccountState } from '../../shared/api'
 import { accountLabel, accountTooltip, unreadDescription } from './account-display'
 import Avatar from './Avatar'
@@ -6,6 +7,10 @@ import styles from './Sidebar.module.css'
 
 /** The pointer must move this far, in points, before a press becomes a drag. */
 const DRAG_THRESHOLD = 5
+
+/** The height of the slot of one account, and the space between two slots, in points. */
+const SLOT_HEIGHT = 52
+const SLOT_GAP = 10
 
 interface SidebarProps {
   accounts: AccountState[]
@@ -154,9 +159,25 @@ function Sidebar({ accounts, selectedAccountId }: SidebarProps): React.JSX.Eleme
     window.shifted.moveAccount(accountId, toIndex)
   }
 
+  const selectedIndex = shown.findIndex((account) => account.id === selectedAccountId)
+
   return (
     <nav className={styles.sidebar} aria-label="Accounts">
       <ul className={styles.list}>
+        {selectedIndex >= 0 && (
+          // The selection tile behind the selected account. It joins the content area, and
+          // it slides to the new slot when the selected account changes.
+          <li
+            className={styles.selectionTile}
+            style={
+              {
+                '--tile-offset': `${selectedIndex * (SLOT_HEIGHT + SLOT_GAP)}px`
+              } as CSSProperties
+            }
+            aria-hidden="true"
+            data-selection-tile
+          />
+        )}
         {shown.map((account) => {
           const selected = account.id === selectedAccountId
           const unread = unreadDescription(account)
@@ -193,7 +214,7 @@ function Sidebar({ accounts, selectedAccountId }: SidebarProps): React.JSX.Eleme
                 onPointerDown={(event) => startDrag(event, account.id)}
                 onKeyDown={(event) => onKeyDown(event, account.id)}
               >
-                <Avatar account={account} size={44} />
+                <Avatar account={account} size={38} />
                 <UnreadBadge account={account} />
                 {unread && (
                   <span id={unreadId} hidden>
@@ -212,9 +233,7 @@ function Sidebar({ accounts, selectedAccountId }: SidebarProps): React.JSX.Eleme
         title="Add account"
         onClick={() => window.shifted.addAccount()}
       >
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
+        <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
       </button>
     </nav>
   )

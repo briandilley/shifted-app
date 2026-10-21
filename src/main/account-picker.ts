@@ -14,6 +14,7 @@ import {
   lockShiftedScreen,
   shiftedScreenWebPreferences
 } from './shifted-screens'
+import { baseBackgroundColor, followBaseBackground } from './window-frame'
 
 /** The choice of the person in the account picker. */
 export interface AccountPickerChoice {
@@ -70,6 +71,7 @@ export class AccountPicker {
     const hasParent = parent !== null && !parent.isDestroyed()
     const window = new BrowserWindow({
       title: 'New message',
+      backgroundColor: baseBackgroundColor(),
       width,
       height,
       useContentSize: true,
@@ -84,6 +86,7 @@ export class AccountPicker {
       webPreferences: shiftedScreenWebPreferences()
     })
     lockShiftedScreen(window.webContents)
+    followBaseBackground(window)
     const picker: OpenPicker = { window, info, handler }
     this.open = picker
 

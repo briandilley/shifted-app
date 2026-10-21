@@ -25,7 +25,9 @@ import {
 } from '../../shared/api'
 import { accountName, accountTitle, colorName } from './account-display'
 import Avatar from './Avatar'
+import controls from './controls.module.css'
 import styles from './SettingsScreen.module.css'
+import { useBackdrop } from './use-color-mode'
 import { useShiftedState } from './use-shifted-state'
 
 /** The page that the URL hash asks for when the window opens. */
@@ -80,7 +82,7 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
         <input
           ref={nicknameRef}
           id={nicknameId}
-          className={styles.input}
+          className={controls.textField}
           type="text"
           value={nickname}
           maxLength={MAX_NICKNAME_LENGTH}
@@ -124,7 +126,7 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
       <div className={styles.actions}>
         <button
           type="button"
-          className={styles.button}
+          className={controls.secondaryButton}
           disabled={account.status !== 'signed-in'}
           onClick={() => window.shifted.signOut(account.id)}
         >
@@ -132,7 +134,7 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
         </button>
         <button
           type="button"
-          className={`${styles.button} ${styles.danger}`}
+          className={controls.secondaryButton}
           onClick={() => window.shifted.removeAccount(account.id)}
         >
           Remove
@@ -160,7 +162,7 @@ function UnreadCountSourceField({ account }: { account: AccountState }): React.J
       </label>
       <select
         id={id}
-        className={styles.input}
+        className={controls.select}
         value={account.unreadCountSource}
         onChange={(event) => {
           const source = event.target.value
@@ -207,6 +209,7 @@ function NotificationSwitchesField({
           <input
             type="checkbox"
             role="switch"
+            className={controls.toggle}
             checked={switches[kind]}
             onChange={(event) => {
               const on = event.target.checked
@@ -255,6 +258,7 @@ function QuietHoursField({ account }: { account: AccountState }): React.JSX.Elem
         <input
           type="checkbox"
           role="switch"
+          className={controls.toggle}
           checked={quietHours.enabled}
           onChange={(event) => save({ enabled: event.target.checked })}
         />
@@ -265,7 +269,7 @@ function QuietHoursField({ account }: { account: AccountState }): React.JSX.Elem
           <label htmlFor={startId}>Quiet every day from</label>
           <input
             id={startId}
-            className={styles.input}
+            className={controls.textField}
             type="time"
             value={start}
             required
@@ -277,7 +281,7 @@ function QuietHoursField({ account }: { account: AccountState }): React.JSX.Elem
           <label htmlFor={endId}>to</label>
           <input
             id={endId}
-            className={styles.input}
+            className={controls.textField}
             type="time"
             value={end}
             required
@@ -337,7 +341,7 @@ function NotificationsPage({ snooze }: { snooze: Snooze | null }): React.JSX.Ele
         <div>
           <button
             type="button"
-            className={styles.button}
+            className={controls.secondaryButton}
             disabled={snooze === null}
             onClick={() => window.shifted.stopSnooze()}
           >
@@ -387,7 +391,7 @@ function PagePermissionsField({ account }: { account: AccountState }): React.JSX
       <div>
         <button
           type="button"
-          className={styles.button}
+          className={controls.secondaryButton}
           disabled={saved.length === 0}
           onClick={() => window.shifted.resetPagePermissions(account.id)}
         >
@@ -446,7 +450,12 @@ function DefaultEmailAppField(): React.JSX.Element {
     <div className={styles.field}>
       <span className={styles.label}>Default email app</span>
       <div className={styles.row}>
-        <button type="button" className={styles.button} disabled={busy} onClick={makeDefault}>
+        <button
+          type="button"
+          className={controls.secondaryButton}
+          disabled={busy}
+          onClick={makeDefault}
+        >
           Make Shifted the default email app
         </button>
         <span className={styles.note} data-default-email-app role="status">
@@ -476,7 +485,7 @@ function MailtoDefaultField({ state }: { state: ShiftedState }): React.JSX.Eleme
       <div>
         <button
           type="button"
-          className={styles.button}
+          className={controls.secondaryButton}
           disabled={!account}
           onClick={() => window.shifted.clearMailtoDefault()}
         >
@@ -501,6 +510,7 @@ function GeneralPage({ state }: { state: ShiftedState }): React.JSX.Element {
           <input
             type="checkbox"
             role="switch"
+            className={controls.toggle}
             checked={general.askWhereToSave}
             onChange={(event) => window.shifted.setAskWhereToSave(event.target.checked)}
           />
@@ -536,6 +546,10 @@ function SettingsScreen(): React.JSX.Element {
   // A removed account has no page. Show General in its place.
   const page = pageAccountId && state && !pageAccount ? 'general' : request.page
 
+  // The backdrop is --base on General and Notifications. On the page of an account, it
+  // has the tint of that account.
+  const backdrop = useBackdrop(pageAccount?.color ?? null)
+
   const show = (next: SettingsRequest['page']): void => {
     setRequest((current) => ({ page: next, id: current.id + 1 }))
   }
@@ -559,7 +573,7 @@ function SettingsScreen(): React.JSX.Element {
   )
 
   return (
-    <div className={styles.window}>
+    <div className={styles.window} style={{ backgroundColor: backdrop }} data-backdrop={backdrop}>
       <nav className={styles.list} aria-label="Settings pages">
         <ul className={styles.entries}>
           {entry('general', 'General')}

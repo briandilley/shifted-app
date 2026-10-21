@@ -16,6 +16,7 @@ import {
   lockShiftedScreen,
   shiftedScreenWebPreferences
 } from './shifted-screens'
+import { baseBackgroundColor, followBaseBackground } from './window-frame'
 
 /** The size of the small pictures of the screens and windows, in pixels. */
 const THUMBNAIL_SIZE = { width: 320, height: 200 }
@@ -53,6 +54,7 @@ export class ScreenPicker {
     return new Promise((resolve) => {
       const window = new BrowserWindow({
         title: 'Share your screen',
+        backgroundColor: baseBackgroundColor(),
         width: 600,
         height: 520,
         minWidth: 400,
@@ -64,6 +66,7 @@ export class ScreenPicker {
         webPreferences: shiftedScreenWebPreferences()
       })
       lockShiftedScreen(window.webContents)
+      followBaseBackground(window)
       const open: OpenPicker = {
         window,
         accountName,

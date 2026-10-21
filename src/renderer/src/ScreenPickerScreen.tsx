@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ScreenPickerInfo } from '../../shared/api'
+import controls from './controls.module.css'
 import styles from './ScreenPickerScreen.module.css'
 
 /**
@@ -77,7 +78,7 @@ function ScreenPickerScreen(): React.JSX.Element {
       <footer className={styles.footer}>
         <button
           type="button"
-          className={styles.button}
+          className={controls.secondaryButton}
           onClick={() => window.shifted.chooseScreenSource(null)}
         >
           Cancel

@@ -47,7 +47,10 @@ export async function launchShifted(
   return _electron.launch({
     args: [APP_ROOT],
     cwd: APP_ROOT,
-    env: shiftedEnv(fakeGoogle, userDataDir)
+    env: shiftedEnv(fakeGoogle, userDataDir),
+    // Playwright makes every page light by default. Shifted follows the light or dark mode
+    // of the operating system, so the pages must see the mode that the main process sees.
+    colorScheme: null
   })
 }
 

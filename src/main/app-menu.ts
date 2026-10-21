@@ -95,7 +95,7 @@ export function appMenuTemplate(
     },
     {
       id: SNOOZE_CHOICES_MENU_ITEM_ID,
-      label: 'Snooze Notifications…',
+      label: 'Snooze notifications…',
       accelerator: SNOOZE_ACCELERATOR,
       click: () => actions.showSnoozeChoices()
     }

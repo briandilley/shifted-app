@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { AccountState, MailtoPickerInfo } from '../../shared/api'
 import { accountLabel, accountName, accountTitle } from './account-display'
 import Avatar from './Avatar'
+import controls from './controls.module.css'
 import styles from './MailtoPickerScreen.module.css'
 import { useShiftedState } from './use-shifted-state'
 
@@ -83,34 +84,39 @@ function MailtoPickerScreen(): React.JSX.Element {
         </h1>
         <p className={styles.note}>Choose the account that writes the message.</p>
       </header>
-      <ul ref={listRef} className={styles.accounts} role="listbox" aria-label="Accounts">
-        {accounts.map((account) => (
-          <li key={account.id} role="presentation">
-            <button
-              type="button"
-              role="option"
-              className={styles.account}
-              data-account-id={account.id}
-              aria-selected={account === selected}
-              aria-label={accountLabel(account)}
-              tabIndex={account === selected ? 0 : -1}
-              onFocus={() => setSelectedId(account.id)}
-              onClick={() => choose(account)}
-            >
-              <Avatar account={account} size={36} />
-              <span className={styles.names}>
-                <span className={styles.name}>{accountTitle(account)}</span>
-                {account.nickname && <span className={styles.address}>{accountName(account)}</span>}
-              </span>
-              {account.status !== 'signed-in' && (
-                <span className={styles.status}>
-                  {account.status === 'signing-in' ? 'Signing in' : 'Signed out'}
+      <div className={styles.card}>
+        <ul ref={listRef} className={styles.accounts} role="listbox" aria-label="Accounts">
+          {accounts.map((account) => (
+            <li key={account.id} role="presentation">
+              <button
+                type="button"
+                role="option"
+                className={styles.account}
+                data-account-id={account.id}
+                aria-selected={account === selected}
+                aria-label={accountLabel(account)}
+                tabIndex={account === selected ? 0 : -1}
+                style={{ '--account-color': account.color } as CSSProperties}
+                onFocus={() => setSelectedId(account.id)}
+                onClick={() => choose(account)}
+              >
+                <Avatar account={account} size={36} />
+                <span className={styles.names}>
+                  <span className={styles.name}>{accountTitle(account)}</span>
+                  {account.nickname && (
+                    <span className={styles.address}>{accountName(account)}</span>
+                  )}
                 </span>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
+                {account.status !== 'signed-in' && (
+                  <span className={styles.status}>
+                    {account.status === 'signing-in' ? 'Signing in' : 'Signed out'}
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
       <footer className={styles.footer}>
         <label className={styles.always}>
           <input
@@ -122,7 +128,7 @@ function MailtoPickerScreen(): React.JSX.Element {
         </label>
         <button
           type="button"
-          className={styles.button}
+          className={controls.secondaryButton}
           onClick={() => window.shifted.cancelMailtoPicker()}
         >
           Cancel
