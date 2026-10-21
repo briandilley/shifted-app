@@ -558,6 +558,75 @@ function StartupFields({ general }: { general: GeneralConfig }): React.JSX.Eleme
   )
 }
 
+/**
+ * "Export configuration…", "Email it to myself", and "Import configuration…". See "Move to
+ * another computer" in docs/spec/PRODUCT.md.
+ */
+function MoveToAnotherComputerField({ state }: { state: ShiftedState }): React.JSX.Element {
+  const [status, setStatus] = useState('')
+  const [busy, setBusy] = useState(false)
+  const selected = state.accounts.find((account) => account.id === state.selectedAccountId)
+  const canEmail =
+    selected !== undefined && selected.email !== '' && selected.status === 'signed-in'
+
+  const exportToFile = (): void => {
+    setBusy(true)
+    setStatus('')
+    window.shifted
+      .exportConfiguration()
+      .then((result) => {
+        if (result.kind === 'saved') setStatus(`Saved ${result.fileName}.`)
+        else if (result.kind === 'error') setStatus(result.message)
+      })
+      .catch((error: unknown) => {
+        console.error('Shifted could not export the configuration:', error)
+      })
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className={styles.field}>
+      <span className={styles.label}>Move to another computer</span>
+      <div className={styles.row}>
+        <button
+          type="button"
+          className={controls.secondaryButton}
+          disabled={busy}
+          onClick={exportToFile}
+        >
+          Export configuration…
+        </button>
+        <button
+          type="button"
+          className={controls.secondaryButton}
+          disabled={!canEmail}
+          onClick={() => window.shifted.emailConfiguration()}
+        >
+          Email it to myself
+        </button>
+        <button
+          type="button"
+          className={controls.secondaryButton}
+          onClick={() => window.shifted.openImportWindow()}
+        >
+          Import configuration…
+        </button>
+      </div>
+      <p className={styles.note} role="status" data-export-status>
+        {status}
+      </p>
+      <p className={styles.note}>
+        The exported configuration has your accounts with their nicknames, colors, and notification
+        values, and the values of this page. It never has sign-ins. On the other computer, you sign
+        in to each account again.{' '}
+        {canEmail
+          ? `Email it to myself opens a new message to ${selected.email} in Gmail. You click Send.`
+          : 'To email it to yourself, select an account that is signed in, in the main window.'}
+      </p>
+    </div>
+  )
+}
+
 /** The General page. */
 function GeneralPage({ state }: { state: ShiftedState }): React.JSX.Element {
   const general: GeneralConfig = state.general
@@ -585,6 +654,7 @@ function GeneralPage({ state }: { state: ShiftedState }): React.JSX.Element {
       </div>
       <DefaultEmailAppField />
       <MailtoDefaultField state={state} />
+      <MoveToAnotherComputerField state={state} />
     </section>
   )
 }

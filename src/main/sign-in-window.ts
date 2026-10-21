@@ -38,7 +38,11 @@ export class SignInWindow {
   readonly view: WebContentsView
   private finished = false
 
-  constructor(accountSession: Session, handlers: SignInWindowHandlers) {
+  /**
+   * @param address The address to fill in on Google's sign-in page, for an account that
+   *   came from an import. Without it, the page starts empty.
+   */
+  constructor(accountSession: Session, handlers: SignInWindowHandlers, address?: string) {
     this.window = new BrowserWindow({
       title: 'Sign in',
       backgroundColor: baseBackgroundColor(),
@@ -97,7 +101,7 @@ export class SignInWindow {
     })
 
     loadShiftedScreen(this.window.webContents, SIGN_IN_SCREEN_HASH)
-    page.loadURL(signInUrl()).catch(ignore)
+    page.loadURL(signInUrl(address)).catch(ignore)
   }
 
   setViewBounds(bounds: ViewBounds): void {

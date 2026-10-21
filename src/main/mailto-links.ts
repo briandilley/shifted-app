@@ -55,7 +55,7 @@ export class MailtoLinks {
    * Gmail loads if it is not loaded. If the account is not signed in, the content area
    * shows the signed-out panel, and no new message opens.
    */
-  private compose(accountId: string, url: string): void {
+  compose(accountId: string, url: string): void {
     const account = this.accounts.account(accountId)
     if (!account) return
     this.showMainWindow()

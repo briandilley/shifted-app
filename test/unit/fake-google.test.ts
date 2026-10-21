@@ -80,6 +80,15 @@ describe('the fake Google test server', () => {
     const html = await signInPage.text()
     expect(html).toContain('Sign in</button>')
     expect(html).toContain('name="email" value="test@example.com"')
+    expect(html).toContain('<span id="email-param"></span>')
+
+    // The Email parameter fills in the address, and the page shows it.
+    const withEmail = await fetch(
+      `${fakeGoogle.url}/signin?Email=${encodeURIComponent('a&b@example.com')}`
+    )
+    const withEmailHtml = await withEmail.text()
+    expect(withEmailHtml).toContain('<span id="email-param">a&amp;b@example.com</span>')
+    expect(withEmailHtml).toContain('name="email" value="a&amp;b@example.com"')
 
     const avatar = await fetch(`${fakeGoogle.url}/avatar.png`)
     expect(avatar.status).toBe(404)

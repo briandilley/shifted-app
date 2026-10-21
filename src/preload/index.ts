@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IpcChannel,
   type BackgroundLoading,
+  type ExportFileResult,
   type GoogleApp,
+  type ImportReadResult,
   type MailtoPickerInfo,
   type NotificationKind,
   type QuietHours,
@@ -75,7 +77,17 @@ const shifted: ShiftedApi = Object.freeze({
     listen(IpcChannel.mailtoPickerChanged, listener),
   chooseMailtoAccount: (accountId: string, always: boolean) =>
     ipcRenderer.send(IpcChannel.chooseMailtoAccount, accountId, always),
-  cancelMailtoPicker: () => ipcRenderer.send(IpcChannel.cancelMailtoPicker)
+  cancelMailtoPicker: () => ipcRenderer.send(IpcChannel.cancelMailtoPicker),
+  exportConfiguration: () =>
+    ipcRenderer.invoke(IpcChannel.exportConfiguration) as Promise<ExportFileResult>,
+  emailConfiguration: () => ipcRenderer.send(IpcChannel.emailConfiguration),
+  openImportWindow: () => ipcRenderer.send(IpcChannel.openImportWindow),
+  chooseImportFile: () =>
+    ipcRenderer.invoke(IpcChannel.chooseImportFile) as Promise<ImportReadResult>,
+  readImportText: (text: string) =>
+    ipcRenderer.invoke(IpcChannel.readImportText, text) as Promise<ImportReadResult>,
+  confirmImport: () => ipcRenderer.send(IpcChannel.confirmImport),
+  cancelImport: () => ipcRenderer.send(IpcChannel.cancelImport)
 })
 
 contextBridge.exposeInMainWorld('shifted', shifted)

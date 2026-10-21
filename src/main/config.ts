@@ -75,6 +75,12 @@ export interface AccountConfig {
   notifications: NotificationSwitches
   /** The quiet hours. Missing in a file from phase 04, which means off. */
   quietHours: QuietHours
+  /**
+   * True for an account that came from an import and never signed in on this computer.
+   * Shifted shows "Sign in to <address>." for it, and does not read its feed. Missing
+   * means false. Shifted removes the field after the first sign-in.
+   */
+  signInNeeded?: true
 }
 
 export interface Config {
@@ -226,6 +232,8 @@ function parseAccount(value: unknown): AccountConfig | undefined {
   const quietHours =
     value['quietHours'] === undefined ? defaultQuietHours() : parseQuietHours(value['quietHours'])
   if (!quietHours) return undefined
+  const signInNeeded = value['signInNeeded'] ?? false
+  if (typeof signInNeeded !== 'boolean') return undefined
   return {
     id,
     email,
@@ -237,7 +245,8 @@ function parseAccount(value: unknown): AccountConfig | undefined {
     unreadCountSource,
     automaticFeed,
     notifications,
-    quietHours
+    quietHours,
+    ...(signInNeeded ? { signInNeeded: true as const } : {})
   }
 }
 

@@ -6,7 +6,8 @@
  *
  * To add a route, add an entry to `routes` (or call `server.addRoute`).
  *
- * Sign-in: the fake sign-in page has an email field, filled with `state.address`. Its
+ * Sign-in: the fake sign-in page has an email field, filled with the `Email` parameter of
+ * the URL (which it also shows in `#email-param`), else with `state.address`. Its
  * "Sign in" button sets the session cookie `FAKE_SID` with a new session ID and goes to
  * `/gmail/`. Each session belongs to the address that signed in, so each account of
  * Shifted, with its own cookie, sees its own fake address. Without a valid cookie,
@@ -544,18 +545,22 @@ export const routes: Route[] = [
     method: 'GET',
     path: '/signin',
     handler: (context) => {
-      const { res, state } = context
+      const { res, state, url } = context
       // Like Google, the sign-in page goes straight to Gmail when the session is signed in.
       if (currentSession(context)) {
         redirect(res, '/gmail/')
         return
       }
+      // Like Google, the `Email` parameter fills in the address. The page also shows the
+      // parameter in `#email-param`, so that a test can read it.
+      const emailParam = url.searchParams.get('Email')
       sendHtml(
         res,
         'Sign in - Google Accounts',
         `    <h1>Fake Google sign-in</h1>
+    <p>Email parameter: <span id="email-param">${escapeHtml(emailParam ?? '')}</span></p>
     <form method="post" action="/signin">
-      <label>Email <input type="email" name="email" value="${escapeHtml(state.address)}" /></label>
+      <label>Email <input type="email" name="email" value="${escapeHtml(emailParam || state.address)}" /></label>
       <button type="submit">Sign in</button>
     </form>`
       )

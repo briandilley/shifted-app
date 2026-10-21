@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react'
+import { Import, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { unreadBadgeText, type AccountState } from '../../shared/api'
 import { accountLabel, accountTooltip, unreadDescription } from './account-display'
@@ -15,6 +15,8 @@ const SLOT_GAP = 10
 interface SidebarProps {
   accounts: AccountState[]
   selectedAccountId: string | null
+  /** Show "Import configuration…" below "Add account". The main window does it with no accounts. */
+  showImport: boolean
 }
 
 interface Drag {
@@ -74,7 +76,7 @@ function UnreadBadge({ account }: { account: AccountState }): React.JSX.Element 
  * The sidebar: one avatar for each account, in the order of the configuration, and the
  * add-account button below the list. Drag an account to a new place to change the order.
  */
-function Sidebar({ accounts, selectedAccountId }: SidebarProps): React.JSX.Element {
+function Sidebar({ accounts, selectedAccountId, showImport }: SidebarProps): React.JSX.Element {
   const [drag, setDrag] = useState<Drag | null>(null)
   // After a drop, the new order shows until the main process sends it back.
   const [dropped, setDropped] = useState<{ ids: string[]; from: AccountState[] } | null>(null)
@@ -235,6 +237,18 @@ function Sidebar({ accounts, selectedAccountId }: SidebarProps): React.JSX.Eleme
       >
         <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
       </button>
+      {showImport && (
+        // With no accounts, "Import configuration…" sits next to "Add account".
+        <button
+          type="button"
+          className={styles.importConfiguration}
+          aria-label="Import configuration…"
+          title="Import configuration…"
+          onClick={() => window.shifted.openImportWindow()}
+        >
+          <Import size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      )}
     </nav>
   )
 }

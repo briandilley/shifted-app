@@ -19,6 +19,8 @@ import type { AccountPicker } from './account-picker'
 import type { Accounts } from './accounts'
 import { isAccountId } from './config'
 import { isDefaultEmailApp, makeDefaultEmailApp } from './default-email-app'
+import { exportConfigurationToFile } from './export-configuration'
+import type { ImportWindow } from './import-window'
 import type { ScreenPicker } from './screen-picker'
 import type { SettingsWindow } from './settings-window'
 
@@ -41,11 +43,19 @@ function logError(action: string): (error: unknown) => void {
   }
 }
 
+/** Export and import of the configuration. See "Move to another computer" in `PRODUCT.md`. */
+export interface ConfigTransferIpc {
+  importWindow: ImportWindow
+  /** "Email it to myself": a new message in Gmail of the selected account. */
+  emailConfigurationToSelf(): void
+}
+
 export function registerIpc(
   accounts: Accounts,
   settings: SettingsWindow,
   screenPicker: ScreenPicker,
-  accountPicker: AccountPicker
+  accountPicker: AccountPicker,
+  transfer: ConfigTransferIpc
 ): void {
   const isMainScreen = (sender: WebContents): boolean => accounts.isMainScreen(sender)
   /** The main window or the configuration window. */
@@ -223,5 +233,43 @@ export function registerIpc(
   ipcMain.on(IpcChannel.cancelMailtoPicker, (event) => {
     if (!accountPicker.isScreen(event.sender)) return
     accountPicker.cancel()
+  })
+
+  const { importWindow } = transfer
+
+  ipcMain.handle(IpcChannel.exportConfiguration, (event) => {
+    if (!settings.isScreen(event.sender)) throw new Error('Not the configuration window.')
+    return exportConfigurationToFile(accounts, BrowserWindow.fromWebContents(event.sender))
+  })
+
+  ipcMain.on(IpcChannel.emailConfiguration, (event) => {
+    if (!settings.isScreen(event.sender)) return
+    transfer.emailConfigurationToSelf()
+  })
+
+  ipcMain.on(IpcChannel.openImportWindow, (event) => {
+    if (!isShiftedScreen(event.sender)) return
+    importWindow.open(BrowserWindow.fromWebContents(event.sender))
+  })
+
+  ipcMain.handle(IpcChannel.chooseImportFile, (event) => {
+    if (!importWindow.isScreen(event.sender)) throw new Error('Not the import window.')
+    return importWindow.chooseFile()
+  })
+
+  ipcMain.handle(IpcChannel.readImportText, (event, text: unknown) => {
+    if (!importWindow.isScreen(event.sender)) throw new Error('Not the import window.')
+    if (typeof text !== 'string') throw new Error('The pasted text is not text.')
+    return importWindow.readText(text)
+  })
+
+  ipcMain.on(IpcChannel.confirmImport, (event) => {
+    if (!importWindow.isScreen(event.sender)) return
+    importWindow.confirm()
+  })
+
+  ipcMain.on(IpcChannel.cancelImport, (event) => {
+    if (!importWindow.isScreen(event.sender)) return
+    importWindow.close()
   })
 }

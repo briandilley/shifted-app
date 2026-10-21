@@ -104,6 +104,11 @@ export function runSecondInstance(
   })
 }
 
+/** The page of the import window. */
+export function importWindowPage(app: ElectronApplication): Promise<Page> {
+  return findPage(app, (url) => url.startsWith('file:') && url.endsWith('#import'))
+}
+
 /** The page of the account picker. */
 export function accountPickerPage(app: ElectronApplication): Promise<Page> {
   return findPage(app, (url) => url.startsWith('file:') && url.endsWith('#mailto-picker'))
@@ -239,6 +244,7 @@ export interface ConfigFile {
     automaticFeed?: string | null
     notifications?: Record<string, boolean>
     quietHours?: { enabled: boolean; start: string; end: string; days: number[] }
+    signInNeeded?: boolean
   }[]
   snooze?: { until: number | null } | null
 }

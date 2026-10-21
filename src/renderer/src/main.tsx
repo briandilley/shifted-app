@@ -4,12 +4,14 @@ import './assets/main.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
+  IMPORT_WINDOW_HASH,
   MAILTO_PICKER_HASH,
   SCREEN_PICKER_HASH,
   SETTINGS_SCREEN_HASH,
   SIGN_IN_SCREEN_HASH
 } from '../../shared/api'
 import App from './App'
+import ImportScreen from './ImportScreen'
 import MailtoPickerScreen from './MailtoPickerScreen'
 import ScreenPickerScreen from './ScreenPickerScreen'
 import SettingsScreen from './SettingsScreen'
@@ -26,6 +28,7 @@ const isSettingsScreen =
 
 const isScreenPicker = hash === SCREEN_PICKER_HASH
 const isMailtoPicker = hash === MAILTO_PICKER_HASH
+const isImportWindow = hash === IMPORT_WINDOW_HASH
 
 const screen = isSignInScreen ? (
   <SignInScreen />
@@ -35,6 +38,8 @@ const screen = isSignInScreen ? (
   <ScreenPickerScreen />
 ) : isMailtoPicker ? (
   <MailtoPickerScreen />
+) : isImportWindow ? (
+  <ImportScreen />
 ) : (
   <App />
 )

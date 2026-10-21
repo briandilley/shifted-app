@@ -7,7 +7,9 @@ import { Accounts } from './accounts'
 import { AppBadge } from './app-badge'
 import { buildSnoozeMenu, setAppMenu, type AppMenuActions } from './app-menu'
 import { ConfigStore } from './config'
+import { emailConfigurationToSelf } from './export-configuration'
 import { gmailMessageUrl, gmailUrl } from './google-urls'
+import { ImportWindow } from './import-window'
 import { registerIpc } from './ipc'
 import { newMailNotifications } from './new-mail'
 import { findMailtoArgument, isMailtoUrl } from './mailto'
@@ -207,7 +209,16 @@ function startShifted(): void {
   )
   const settings = new SettingsWindow(accounts)
   const accountPicker = new AccountPicker(accounts)
-  registerIpc(accounts, settings, screenPicker, accountPicker)
+  const importWindow = new ImportWindow(accounts, () => {
+    showMainWindow?.()
+  })
+  registerIpc(accounts, settings, screenPicker, accountPicker, {
+    importWindow,
+    // The compose path of `mailto:` links: Gmail of the account, in the main window, which
+    // comes to the front.
+    emailConfigurationToSelf: () =>
+      emailConfigurationToSelf(accounts, (accountId, url) => mailtoLinks?.compose(accountId, url))
+  })
   // The app badge shows the sum of the unread counts of all accounts.
   const badge = new AppBadge()
   accounts.subscribe((state) => badge.update(appBadgeTotal(state.accounts)))

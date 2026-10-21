@@ -62,6 +62,20 @@ describe('google-urls', () => {
     expect(feedUrl('%5Eiim')).toBe('http://127.0.0.1:4555/feed/atom/%5Eiim')
   })
 
+  it('adds the Email parameter to the sign-in URL only when it has an address', () => {
+    expect(signInUrl('alice+work@example.com')).toBe(
+      'https://accounts.google.com/ServiceLogin?service=mail&continue=https://mail.google.com/mail/u/0/&Email=alice%2Bwork%40example.com'
+    )
+    expect(new URL(signInUrl('alice+work@example.com')).searchParams.get('Email')).toBe(
+      'alice+work@example.com'
+    )
+    expect(signInUrl()).not.toContain('Email')
+    expect(signInUrl('')).not.toContain('Email')
+    process.env['SHIFTED_TEST_SERVER'] = 'http://127.0.0.1:4555'
+    expect(signInUrl('a@example.com')).toBe('http://127.0.0.1:4555/signin?Email=a%40example.com')
+    expect(signInUrl()).toBe('http://127.0.0.1:4555/signin')
+  })
+
   it('has the feed label of each unread count source', () => {
     expect(FEED_LABELS).toEqual({
       'whole-inbox': '',

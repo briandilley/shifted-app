@@ -188,6 +188,15 @@ describe('parseConfig', () => {
     })
   })
 
+  it('reads "signInNeeded" of an account from an import, and refuses a wrong value', () => {
+    const parse = (signInNeeded: unknown): Config | undefined =>
+      parseConfig({ version: 1, accounts: [{ ...ACCOUNT, signInNeeded }] })
+    expect(parse(true)?.accounts[0]).toEqual({ ...ACCOUNT, signInNeeded: true })
+    expect(parse(false)?.accounts[0]).toEqual(ACCOUNT)
+    expect(parse(false)?.accounts[0]).not.toHaveProperty('signInNeeded')
+    expect(parse('yes')).toBeUndefined()
+  })
+
   it('reads a file from phase 06, with no "Background loading" and no "Open at login"', () => {
     expect(
       parseConfig({ version: 1, general: { askWhereToSave: true }, accounts: [] })?.general

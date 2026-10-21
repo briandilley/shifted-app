@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { AccountState, MailtoPickerInfo } from '../../shared/api'
+import type { AccountState, AccountStatus, MailtoPickerInfo } from '../../shared/api'
 import { accountLabel, accountName, accountTitle } from './account-display'
 import Avatar from './Avatar'
 import controls from './controls.module.css'
 import styles from './MailtoPickerScreen.module.css'
 import { useShiftedState } from './use-shifted-state'
+
+/** The status that an account that is not signed in shows in the list. */
+const STATUS_NAMES: Readonly<Record<AccountStatus, string>> = {
+  'signed-in': '',
+  'signing-in': 'Signing in',
+  'signed-out': 'Signed out',
+  'not-signed-in': 'Not signed in'
+}
 
 /**
  * The account picker: which account writes the new message of a `mailto:` link from
@@ -108,9 +116,7 @@ function MailtoPickerScreen(): React.JSX.Element {
                   )}
                 </span>
                 {account.status !== 'signed-in' && (
-                  <span className={styles.status}>
-                    {account.status === 'signing-in' ? 'Signing in' : 'Signed out'}
-                  </span>
+                  <span className={styles.status}>{STATUS_NAMES[account.status]}</span>
                 )}
               </button>
             </li>

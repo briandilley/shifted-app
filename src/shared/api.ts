@@ -25,8 +25,10 @@ export const MAX_NICKNAME_LENGTH = 100
  * - `signed-in`: the Google app of the account.
  * - `signing-in`: the sign-in window of the account is open.
  * - `signed-out`: the account is signed out. The content area shows "Sign in again".
+ * - `not-signed-in`: the account came from an import and never signed in on this
+ *   computer. Its session is empty. The content area shows "Sign in to <address>.".
  */
-export type AccountStatus = 'signed-in' | 'signing-in' | 'signed-out'
+export type AccountStatus = 'signed-in' | 'signing-in' | 'signed-out' | 'not-signed-in'
 
 /**
  * The page permissions that Shifted asks the person about, the first time a page of an
@@ -455,7 +457,58 @@ export interface ShiftedApi {
   chooseMailtoAccount(accountId: string, always: boolean): void
   /** The account picker only: close it, and open no new message. */
   cancelMailtoPicker(): void
+  /**
+   * The configuration window only: "Export configuration…". Shows a save dialog, then
+   * writes the exported configuration as a file.
+   */
+  exportConfiguration(): Promise<ExportFileResult>
+  /**
+   * The configuration window only: "Email it to myself". Opens a new message with the
+   * exported configuration in Gmail of the selected account, in the main window.
+   */
+  emailConfiguration(): void
+  /** "Import configuration…": open the import window, or bring it to the front. */
+  openImportWindow(): void
+  /** The import window only: choose a file, read it, and show what will change. */
+  chooseImportFile(): Promise<ImportReadResult>
+  /** The import window only: read the pasted text, and show what will change. */
+  readImportText(text: string): Promise<ImportReadResult>
+  /** The import window only: apply the configuration that it read, then close it. */
+  confirmImport(): void
+  /** The import window only: close it, and change nothing. */
+  cancelImport(): void
 }
+
+/** The result of "Export configuration…". */
+export type ExportFileResult =
+  { kind: 'saved'; fileName: string } | { kind: 'canceled' } | { kind: 'error'; message: string }
+
+/** One account in the preview of an import. */
+export interface ImportPreviewAccount {
+  email: string
+  nickname: string
+  color: string
+}
+
+/** What an import will change. The import window shows it before the person confirms. */
+export interface ImportPreview {
+  /** When the configuration was exported, as an ISO 8601 time, or `null`. */
+  exportedAt: string | null
+  /** The new accounts. Each one needs a sign-in after the import. */
+  addedAccounts: ImportPreviewAccount[]
+  /** The accounts on this computer with the same address, and what changes in each one. */
+  changedAccounts: (ImportPreviewAccount & { changes: string[] })[]
+  /** What changes on the General page, one line for each value. */
+  generalChanges: string[]
+  /** The accounts on this computer that the import does not change. They stay. */
+  unchangedAccounts: number
+}
+
+/** What the import window shows after it reads a file or the pasted text. */
+export type ImportReadResult =
+  | { kind: 'preview'; preview: ImportPreview }
+  | { kind: 'error'; message: string }
+  | { kind: 'canceled' }
 
 /** What the account picker shows. */
 export interface MailtoPickerInfo {
@@ -512,7 +565,14 @@ export const IpcChannel = {
   getMailtoPicker: 'shifted:get-mailto-picker',
   mailtoPickerChanged: 'shifted:mailto-picker-changed',
   chooseMailtoAccount: 'shifted:choose-mailto-account',
-  cancelMailtoPicker: 'shifted:cancel-mailto-picker'
+  cancelMailtoPicker: 'shifted:cancel-mailto-picker',
+  exportConfiguration: 'shifted:export-configuration',
+  emailConfiguration: 'shifted:email-configuration',
+  openImportWindow: 'shifted:open-import-window',
+  chooseImportFile: 'shifted:choose-import-file',
+  readImportText: 'shifted:read-import-text',
+  confirmImport: 'shifted:confirm-import',
+  cancelImport: 'shifted:cancel-import'
 } as const
 
 /** The URL hash of the screen at the top of the sign-in window. */
@@ -523,3 +583,6 @@ export const SCREEN_PICKER_HASH = 'screen-picker'
 
 /** The URL hash of the account picker. */
 export const MAILTO_PICKER_HASH = 'mailto-picker'
+
+/** The URL hash of the import window. */
+export const IMPORT_WINDOW_HASH = 'import'

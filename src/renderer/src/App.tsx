@@ -43,6 +43,22 @@ function ContentPanel({ account, addAccountFirst }: ContentPanelProps): React.JS
           </button>
         </div>
       )
+    case 'not-signed-in':
+      // An account from an import. Its session is empty, so it needs a sign-in.
+      return (
+        <div className={styles.panel}>
+          <p className={styles.message}>
+            {account.email ? `Sign in to ${account.email}.` : 'Sign in to this account.'}
+          </p>
+          <button
+            type="button"
+            className={controls.primaryButton}
+            onClick={() => window.shifted.signInAgain(account.id)}
+          >
+            Sign in
+          </button>
+        </div>
+      )
     case 'signed-in':
       // The view of the Google app covers the content area.
       return <></>
@@ -88,6 +104,7 @@ function App(): React.JSX.Element {
       <Sidebar
         accounts={state?.accounts ?? []}
         selectedAccountId={state?.selectedAccountId ?? null}
+        showImport={state !== null && state.accounts.length === 0}
       />
       <main ref={contentAreaRef} className={styles.contentArea}>
         {state && <ContentPanel account={account} addAccountFirst={state.addAccountFirst} />}

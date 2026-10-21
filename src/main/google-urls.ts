@@ -38,10 +38,18 @@ export function calendarUrl(): string {
   return server ? `${server}/calendar/` : CALENDAR_URL
 }
 
-/** The URL of Google's sign-in page. After sign-in, Google goes to Gmail. */
-export function signInUrl(): string {
+/**
+ * The URL of Google's sign-in page. After sign-in, Google goes to Gmail.
+ *
+ * @param address The address of the account. With an address, the URL gets
+ *   `&Email=<encoded address>`, and Google's sign-in page fills in the address. In test
+ *   mode, the fake sign-in page gets `?Email=<encoded address>`.
+ */
+export function signInUrl(address?: string): string {
   const server = testServerUrl()
-  return server ? `${server}/signin` : SIGN_IN_URL
+  const base = server ? `${server}/signin` : SIGN_IN_URL
+  if (!address) return base
+  return `${base}${server ? '?' : '&'}Email=${encodeURIComponent(address)}`
 }
 
 /**

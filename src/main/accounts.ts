@@ -13,6 +13,7 @@ import {
   type AskedPermission,
   type BackgroundLoading,
   type GoogleApp,
+  type ImportPreview,
   type NotificationKind,
   type PermissionAnswer,
   type QuietHours,
@@ -39,6 +40,12 @@ import {
   type ConfigStore,
   type MailtoConfig
 } from './config'
+import {
+  applyImport,
+  exportConfiguration,
+  previewImport,
+  type ExportedConfiguration
+} from './config-transfer'
 import { Downloads } from './downloads'
 import { feedErrorText, readFeed, type FeedEntry, type FeedFetch, type FeedResult } from './feed'
 import { findProfilePhotoUrl, readInboxCount } from './gmail-page'
@@ -158,10 +165,15 @@ export class Accounts {
         this.childWindows.closeIfOnlyDownload(contents)
       }
     }
-    // An account in the configuration signed in before. Its session is on disk.
+    // An account in the configuration signed in before. Its session is on disk. An
+    // account from an import that never signed in here has an empty session.
     for (const account of this.config.accounts) {
-      this.status.set(account.id, 'signed-in')
-      this.signedInOnce.add(account.id)
+      if (account.signInNeeded) {
+        this.status.set(account.id, 'not-signed-in')
+      } else {
+        this.status.set(account.id, 'signed-in')
+        this.signedInOnce.add(account.id)
+      }
       this.session(account.id)
     }
     this.selectedAccountId = this.config.accounts[0]?.id ?? null
@@ -223,6 +235,53 @@ export class Accounts {
    */
   showAddAccountFirst(): void {
     this.addAccountFirst = true
+    this.publish()
+  }
+
+  /** The exported configuration: the configuration without sign-ins. */
+  exportConfiguration(now = new Date()): ExportedConfiguration {
+    return exportConfiguration(this.config, now)
+  }
+
+  /** What an import of this exported configuration changes. */
+  previewImport(imported: ExportedConfiguration): ImportPreview {
+    return previewImport(this.config, imported)
+  }
+
+  /**
+   * Import an exported configuration, with the rules of `previewImport`. Each new account
+   * gets a new ID and an empty session, and shows "Sign in to <address>." until it signs
+   * in. Shifted does not read its feed until then.
+   */
+  importConfiguration(imported: ExportedConfiguration): void {
+    const before = this.config
+    this.config = applyImport(before, imported)
+    this.store.save(this.config)
+    for (const account of this.config.accounts) {
+      const old = before.accounts.find((candidate) => candidate.id === account.id)
+      if (!old) {
+        this.status.set(account.id, 'not-signed-in')
+        this.session(account.id)
+        continue
+      }
+      if (old.nickname !== account.nickname) {
+        this.childWindows.setTitle(account.id, this.accountName(account.id))
+      }
+      if (old.unreadCountSource !== account.unreadCountSource) this.poller.readNow(account.id)
+    }
+    if (before.general.openAtLogin !== this.config.general.openAtLogin) {
+      try {
+        setOpenAtLogin(this.config.general.openAtLogin)
+      } catch (error) {
+        console.error('Shifted could not change "Open at login":', error)
+      }
+    }
+    this.addAccountFirst = false
+    if (this.selectedAccountId === null) {
+      this.selectedAccountId = this.config.accounts[0]?.id ?? null
+    }
+    this.syncPoller()
+    this.updateViews()
     this.publish()
   }
 
@@ -690,10 +749,17 @@ export class Accounts {
       open.focus()
       return
     }
-    const signInWindow: SignInWindow = new SignInWindow(this.session(accountId), {
-      onFinished: () => this.signInFinished(accountId),
-      onClosed: (finished) => this.signInWindowClosed(accountId, signInWindow, finished)
-    })
+    // An account from an import gets its address filled in on Google's sign-in page.
+    const account = this.findAccount(accountId)
+    const address = account?.signInNeeded ? account.email : undefined
+    const signInWindow: SignInWindow = new SignInWindow(
+      this.session(accountId),
+      {
+        onFinished: () => this.signInFinished(accountId),
+        onClosed: (finished) => this.signInWindowClosed(accountId, signInWindow, finished)
+      },
+      address
+    )
     this.signInWindows.set(accountId, signInWindow)
     this.setStatus(accountId, 'signing-in')
   }
@@ -708,6 +774,7 @@ export class Accounts {
 
   private signInFinished(accountId: string): void {
     this.signedInOnce.add(accountId)
+    this.forgetSignInNeeded(accountId)
     // Write the new cookies to disk now, so that the account stays signed in.
     flushAccountSession(accountId).catch(ignore)
     this.status.set(accountId, 'signed-in')
@@ -729,6 +796,9 @@ export class Accounts {
     if (finished) return
     if (this.signedInOnce.has(accountId)) {
       this.setStatus(accountId, 'signed-out')
+    } else if (this.findAccount(accountId)?.signInNeeded) {
+      // An account from an import stays, with its "Sign in" panel.
+      this.setStatus(accountId, 'not-signed-in')
     } else {
       // Sign-in never ended for this new account, so Shifted does not keep it.
       this.remove(accountId).catch(ignore)
@@ -815,7 +885,8 @@ export class Accounts {
     const canRead = (): boolean =>
       this.findAccount(accountId) !== undefined &&
       !this.removals.has(accountId) &&
-      this.status.get(accountId) !== 'signing-in'
+      this.status.get(accountId) !== 'signing-in' &&
+      this.status.get(accountId) !== 'not-signed-in'
     const account = this.findAccount(accountId)
     if (!account || !canRead()) return 'skipped'
     const feed = feedToRead(account.unreadCountSource, account.automaticFeed)
@@ -885,6 +956,26 @@ export class Accounts {
       this.childWindows.setTitle(accountId, this.accountName(accountId))
     }
     this.publish()
+  }
+
+  /**
+   * The account signed in for the first time on this computer. It is no longer an account
+   * from an import that needs a sign-in. The address comes from the feed, as for every
+   * account. If it is another address, Shifted saves it and keeps the other values.
+   */
+  private forgetSignInNeeded(accountId: string): void {
+    const account = this.findAccount(accountId)
+    if (!account?.signInNeeded) return
+    this.config = {
+      ...this.config,
+      accounts: this.config.accounts.map((candidate) => {
+        if (candidate.id !== accountId) return candidate
+        const rest = { ...candidate }
+        delete rest.signInNeeded
+        return rest
+      })
+    }
+    this.store.save(this.config)
   }
 
   private savePagePermission(
