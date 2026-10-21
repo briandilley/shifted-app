@@ -1,7 +1,14 @@
 import { app, BrowserWindow } from 'electron'
-import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { Accounts } from './accounts'
+import { ConfigStore } from './config'
+import { registerIpc } from './ipc'
+import {
+  loadShiftedScreen,
+  lockShiftedScreen,
+  shiftedScreenWebPreferences
+} from './shifted-screens'
 import { applyUserAgent } from './user-agent'
 
 const APP_ID = 'io.github.briandilley.shifted'
@@ -15,7 +22,7 @@ if (userDataDir) {
 // The user agent must be set before any window opens.
 applyUserAgent(app)
 
-function createMainWindow(): BrowserWindow {
+function createMainWindow(accounts: Accounts): BrowserWindow {
   const mainWindow = new BrowserWindow({
     title: 'Shifted',
     width: 1200,
@@ -23,32 +30,17 @@ function createMainWindow(): BrowserWindow {
     show: false,
     autoHideMenuBar: true,
     ...(process.platform !== 'darwin' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      webviewTag: false
-    }
+    webPreferences: shiftedScreenWebPreferences()
   })
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
 
-  // The screens of Shifted open no windows. Prompt 03 adds the link rules.
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-
-  // The screens of Shifted never navigate away from their own page.
-  mainWindow.webContents.on('will-navigate', (event) => {
-    event.preventDefault()
-  })
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  // The screens of Shifted open no windows and never navigate away from their own page.
+  lockShiftedScreen(mainWindow.webContents)
+  loadShiftedScreen(mainWindow.webContents)
+  accounts.attachMainWindow(mainWindow)
 
   return mainWindow
 }
@@ -78,10 +70,20 @@ void app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  createMainWindow()
+  const accounts = new Accounts(new ConfigStore(app.getPath('userData')))
+  registerIpc(accounts)
+  createMainWindow(accounts)
+
+  // A removal deletes a session from disk. Let it end before Shifted quits.
+  app.on('will-quit', (event) => {
+    const pending = accounts.pendingRemovals()
+    if (!pending) return
+    event.preventDefault()
+    void pending.then(() => app.quit())
+  })
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow(accounts)
   })
 })
 

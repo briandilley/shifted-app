@@ -1,6 +1,6 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
-  "include": ["test/**/*", "vitest.config.mts", "playwright.config.ts", "src/main/**/*"],
+  "include": ["test/**/*", "vitest.config.mts", "playwright.config.ts", "src/main/**/*", "src/shared/**/*"],
   "compilerOptions": {
     "composite": true,
     "strict": true,

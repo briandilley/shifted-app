@@ -1,4 +1,10 @@
-import { test as base, _electron, type ElectronApplication, type Page } from '@playwright/test'
+import {
+  test as base,
+  expect,
+  _electron,
+  type ElectronApplication,
+  type Page
+} from '@playwright/test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -52,10 +58,54 @@ export const test = base.extend<ShiftedFixtures>({
     await app.close()
   },
   mainWindow: async ({ shifted }, use) => {
-    const page = await shifted.firstWindow()
-    await page.waitForLoadState('domcontentloaded')
-    await use(page)
+    await use(await mainWindowPage(shifted))
   }
 })
+
+/** Wait for an open page of Shifted whose URL matches, and return it. */
+export async function findPage(
+  app: ElectronApplication,
+  match: (url: string) => boolean,
+  timeout = 15_000
+): Promise<Page> {
+  const find = (): Page | undefined =>
+    app.windows().find((page) => !page.isClosed() && match(page.url()))
+  await expect.poll(() => find() !== undefined, { timeout }).toBe(true)
+  const page = find()
+  if (!page) throw new Error('The page closed.')
+  return page
+}
+
+/** The React screen of the main window. */
+export async function mainWindowPage(app: ElectronApplication): Promise<Page> {
+  const page = await findPage(
+    app,
+    (url) => url.startsWith('file:') && url.includes('/renderer/index.html') && !url.includes('#')
+  )
+  await page.waitForLoadState('domcontentloaded')
+  return page
+}
+
+/** The number of open windows of Shifted. */
+export function windowCount(app: ElectronApplication): Promise<number> {
+  return app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)
+}
+
+/**
+ * The URLs of the Google pages that show in the main window: the visible child views of
+ * the main window.
+ */
+export function visibleMainWindowPages(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(({ BrowserWindow, WebContentsView }) => {
+    const main = BrowserWindow.getAllWindows().find(
+      (window) => !window.webContents.getURL().includes('#sign-in')
+    )
+    if (!main) return []
+    return main.contentView.children
+      .filter((view): view is Electron.WebContentsView => view instanceof WebContentsView)
+      .filter((view) => view.getVisible() && view.getBounds().height > 0)
+      .map((view) => view.webContents.getURL())
+  })
+}
 
 export { expect } from '@playwright/test'

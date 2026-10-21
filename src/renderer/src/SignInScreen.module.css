@@ -1,0 +1,20 @@
+.window {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.topLine {
+  flex: none;
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--notice-background);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.signInPage {
+  min-height: 0;
+  flex: 1;
+}

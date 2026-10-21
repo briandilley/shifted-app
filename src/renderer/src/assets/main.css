@@ -3,6 +3,11 @@
   --background: #ffffff;
   --text: #1f1f1f;
   --text-muted: #5f6368;
+  --border: #dadce0;
+  --button-background: #ffffff;
+  --button-hover: #f1f3f4;
+  --notice-background: #f1f3f4;
+  --focus: #1a73e8;
   font-family:
     system-ui,
     -apple-system,
@@ -17,6 +22,11 @@
     --background: #1f1f1f;
     --text: #e8eaed;
     --text-muted: #9aa0a6;
+    --border: #3c4043;
+    --button-background: #2d2e30;
+    --button-hover: #3c4043;
+    --notice-background: #2d2e30;
+    --focus: #8ab4f8;
   }
 }
 

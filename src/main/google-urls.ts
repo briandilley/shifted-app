@@ -54,3 +54,54 @@ export function feedUrl(label = ''): string {
   const server = testServerUrl()
   return server ? `${server}/feed/atom/${label}` : `${FEED_URL_BASE}${label}`
 }
+
+const GMAIL_ORIGIN = 'https://mail.google.com'
+const GMAIL_PATH_PREFIX = '/mail/u/'
+const SIGN_IN_HOST = 'accounts.google.com'
+
+const TEST_GMAIL_PATH_PREFIX = '/gmail/'
+const TEST_SIGN_IN_PATH = '/signin'
+
+function parseUrl(url: string): URL | undefined {
+  try {
+    return new URL(url)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * True when the URL is a page of the Gmail Google app (`https://mail.google.com/mail/u/`).
+ * In test mode, true for the fake Gmail (`<server>/gmail/`).
+ */
+export function isGmailUrl(url: string): boolean {
+  const parsed = parseUrl(url)
+  if (!parsed) return false
+  const server = testServerUrl()
+  if (server) {
+    return (
+      parsed.origin === new URL(server).origin && parsed.pathname.startsWith(TEST_GMAIL_PATH_PREFIX)
+    )
+  }
+  return parsed.origin === GMAIL_ORIGIN && parsed.pathname.startsWith(GMAIL_PATH_PREFIX)
+}
+
+/**
+ * True when the URL is a page of Google's sign-in (`accounts.google.com`).
+ * In test mode, true for the fake sign-in page (`<server>/signin`).
+ */
+export function isSignInPageUrl(url: string): boolean {
+  const parsed = parseUrl(url)
+  if (!parsed) return false
+  const server = testServerUrl()
+  if (server) {
+    return (
+      parsed.origin === new URL(server).origin &&
+      (parsed.pathname === TEST_SIGN_IN_PATH || parsed.pathname.startsWith(`${TEST_SIGN_IN_PATH}/`))
+    )
+  }
+  return (
+    (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+    parsed.hostname === SIGN_IN_HOST
+  )
+}
