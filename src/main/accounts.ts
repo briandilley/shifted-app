@@ -9,7 +9,9 @@ import {
   MAX_NICKNAME_LENGTH,
   type AccountState,
   type AccountStatus,
+  type AskedPermission,
   type GoogleApp,
+  type PermissionAnswer,
   type ShiftedState,
   type ViewBounds
 } from '../shared/api'
@@ -20,6 +22,7 @@ import {
   flushAccountSession
 } from './account-session'
 import { AccountViews } from './account-views'
+import { ChildWindows } from './child-windows'
 import {
   moveAccount,
   newAccount,
@@ -27,10 +30,14 @@ import {
   type Config,
   type ConfigStore
 } from './config'
+import { Downloads } from './downloads'
 import { parseFeedAddress } from './feed'
 import { findProfilePhotoUrl } from './gmail-page'
 import { feedUrl, isProfilePhotoUrl } from './google-urls'
+import type { LinkHandlers } from './link-handlers'
 import type { ProfilePhotos } from './profile-photos'
+import type { ScreenPicker } from './screen-picker'
+import { configureAccountSession, type SessionHandlerDeps } from './session-handlers'
 import { SignInWindow } from './sign-in-window'
 
 function ignore(): void {
@@ -52,16 +59,47 @@ export class Accounts {
   private selectedAccountId: string | null
   private mainWindow: BrowserWindow | null = null
   private views: AccountViews | null = null
+  private readonly childWindows = new ChildWindows()
+  private readonly downloads = new Downloads(() => this.config.general.askWhereToSave)
+  private readonly links: LinkHandlers = {
+    showInGoogleApp: (accountId, googleApp, url) => this.showInGoogleApp(accountId, googleApp, url),
+    signedOut: (accountId) => this.setStatus(accountId, 'signed-out'),
+    childWindowOptions: (accountId) =>
+      this.childWindows.options(accountId, this.accountName(accountId)),
+    childWindowCreated: (accountId, window, openedUrl) => {
+      if (this.findAccount(accountId) && !this.removals.has(accountId)) {
+        this.childWindows.add(accountId, window, this.accountName(accountId), openedUrl)
+      } else {
+        window.destroy()
+      }
+    }
+  }
+  private readonly sessionHandlers: SessionHandlerDeps
 
   constructor(
     private readonly store: ConfigStore,
-    private readonly photos: ProfilePhotos
+    private readonly photos: ProfilePhotos,
+    screenPicker: ScreenPicker
   ) {
     this.config = store.load()
+    this.sessionHandlers = {
+      accountName: (accountId) => this.accountName(accountId),
+      pagePermissions: (accountId) => this.findAccount(accountId)?.pagePermissions ?? {},
+      savePagePermission: (accountId, permission, answer) =>
+        this.savePagePermission(accountId, permission, answer),
+      fallbackWindow: () =>
+        this.mainWindow && !this.mainWindow.isDestroyed() ? this.mainWindow : null,
+      pickScreen: (parent, accountName) => screenPicker.pick(parent, accountName),
+      download: (item, contents) => {
+        this.downloads.handle(item)
+        this.childWindows.closeIfOnlyDownload(contents)
+      }
+    }
     // An account in the configuration signed in before. Its session is on disk.
     for (const account of this.config.accounts) {
       this.status.set(account.id, 'signed-in')
       this.signedInOnce.add(account.id)
+      this.session(account.id)
     }
     this.selectedAccountId = this.config.accounts[0]?.id ?? null
   }
@@ -69,7 +107,8 @@ export class Accounts {
   state(): ShiftedState {
     return {
       accounts: this.config.accounts.map((account) => this.accountState(account)),
-      selectedAccountId: this.selectedAccountId
+      selectedAccountId: this.selectedAccountId,
+      general: { ...this.config.general }
     }
   }
 
@@ -91,7 +130,7 @@ export class Accounts {
   attachMainWindow(window: BrowserWindow): void {
     this.mainWindow = window
     const views = new AccountViews(window, {
-      onSignedOut: (accountId) => this.setStatus(accountId, 'signed-out'),
+      links: this.links,
       onGmailLoaded: (accountId, gmail) => this.gmailLoaded(accountId, gmail)
     })
     this.views = views
@@ -128,6 +167,7 @@ export class Accounts {
     const account = newAccount(this.config.accounts)
     this.config = { ...this.config, accounts: [...this.config.accounts, account] }
     this.store.save(this.config)
+    this.session(account.id)
     this.selectedAccountId = account.id
     this.openSignInWindow(account.id)
   }
@@ -147,6 +187,46 @@ export class Accounts {
     if (!account || account.lastGoogleApp === googleApp) return
     this.updateAccount(account.id, { lastGoogleApp: googleApp })
     this.updateViews()
+  }
+
+  /**
+   * Select the account, show this Google app, and load the URL in its view. The link
+   * rules use it, for example for a Calendar link in Gmail. The main window comes to the
+   * front.
+   */
+  showInGoogleApp(accountId: string, googleApp: GoogleApp, url: string): void {
+    const account = this.findAccount(accountId)
+    const views = this.views
+    if (!account || !views || this.removals.has(accountId)) return
+    if (this.status.get(accountId) !== 'signed-in') return
+    this.selectedAccountId = accountId
+    if (account.lastGoogleApp !== googleApp) {
+      this.updateAccount(accountId, { lastGoogleApp: googleApp })
+    }
+    views.load(accountId, googleApp, url)
+    this.updateViews()
+    this.publish()
+    const window = this.mainWindow
+    if (window && !window.isDestroyed()) {
+      if (window.isMinimized()) window.restore()
+      window.show()
+      window.focus()
+    }
+  }
+
+  /** Turn "Ask where to save each file" on or off. */
+  setAskWhereToSave(value: boolean): void {
+    if (this.config.general.askWhereToSave === value) return
+    this.config = { ...this.config, general: { ...this.config.general, askWhereToSave: value } }
+    this.store.save(this.config)
+    this.publish()
+  }
+
+  /** Forget the saved answers to the page permissions of the account. */
+  resetPagePermissions(accountId: string): void {
+    const account = this.findAccount(accountId)
+    if (!account || Object.keys(account.pagePermissions).length === 0) return
+    this.updateAccount(accountId, { pagePermissions: {} })
   }
 
   /** Move the account to a new place in the sidebar, and save the new order. */
@@ -250,8 +330,9 @@ export class Accounts {
   }
 
   private async removeNow(accountId: string): Promise<void> {
-    // 1. Close the views of the account.
+    // 1. Close the views and the child windows of the account.
     this.closeSignInWindow(accountId)
+    this.childWindows.close(accountId)
     this.views?.close(accountId)
     await this.signOuts.get(accountId)?.catch(ignore)
 
@@ -284,6 +365,7 @@ export class Accounts {
 
   private async signOutNow(accountId: string): Promise<void> {
     this.closeSignInWindow(accountId)
+    this.childWindows.close(accountId)
     this.views?.close(accountId)
     this.signedInOnce.add(accountId)
     this.setStatus(accountId, 'signed-out')
@@ -296,7 +378,7 @@ export class Accounts {
       open.focus()
       return
     }
-    const signInWindow: SignInWindow = new SignInWindow(accountSession(accountId), {
+    const signInWindow: SignInWindow = new SignInWindow(this.session(accountId), {
       onFinished: () => this.signInFinished(accountId),
       onClosed: (finished) => this.signInWindowClosed(accountId, signInWindow, finished)
     })
@@ -348,7 +430,7 @@ export class Accounts {
 
   /** Read the email address of the account from the title of its Atom feed. */
   private async readAddress(accountId: string): Promise<void> {
-    const response = await accountSession(accountId).fetch(feedUrl(), { credentials: 'include' })
+    const response = await this.session(accountId).fetch(feedUrl(), { credentials: 'include' })
     if (!response.ok) return
     const address = parseFeedAddress(await response.text())
     const account = this.findAccount(accountId)
@@ -366,7 +448,7 @@ export class Accounts {
     try {
       const url = await findProfilePhotoUrl(gmail)
       if (!url || !isProfilePhotoUrl(url) || !this.findAccount(accountId)) return
-      const changed = await this.photos.download(accountId, accountSession(accountId), url)
+      const changed = await this.photos.download(accountId, this.session(accountId), url)
       if (changed && this.findAccount(accountId)) this.publish()
     } finally {
       this.photoLookups.delete(accountId)
@@ -381,14 +463,44 @@ export class Accounts {
       )
     }
     this.store.save(this.config)
+    if (change.email !== undefined || change.nickname !== undefined) {
+      this.childWindows.setTitle(accountId, this.accountName(accountId))
+    }
     this.publish()
+  }
+
+  private savePagePermission(
+    accountId: string,
+    permission: AskedPermission,
+    answer: PermissionAnswer
+  ): void {
+    const account = this.findAccount(accountId)
+    if (!account || account.pagePermissions[permission] === answer) return
+    this.updateAccount(accountId, {
+      pagePermissions: { ...account.pagePermissions, [permission]: answer }
+    })
   }
 
   private setStatus(accountId: string, status: AccountStatus): void {
     if (!this.findAccount(accountId)) return
     this.status.set(accountId, status)
+    // A child window of an account that is not signed in has nothing to show.
+    if (status !== 'signed-in') this.childWindows.close(accountId)
     this.updateViews()
     this.publish()
+  }
+
+  /** The session of the account, with the handlers for permissions and downloads. */
+  private session(accountId: string): Electron.Session {
+    const result = accountSession(accountId)
+    configureAccountSession(result, accountId, this.sessionHandlers)
+    return result
+  }
+
+  /** The name of the account in dialogs and window titles: its address, or its nickname. */
+  private accountName(accountId: string): string {
+    const account = this.findAccount(accountId)
+    return account?.email || account?.nickname || 'New account'
   }
 
   /**
@@ -422,7 +534,8 @@ export class Accounts {
       color: account.color,
       status: this.status.get(account.id) ?? 'signed-in',
       lastGoogleApp: account.lastGoogleApp,
-      photo: this.photos.dataUrl(account.id)
+      photo: this.photos.dataUrl(account.id),
+      pagePermissions: { ...account.pagePermissions }
     }
   }
 

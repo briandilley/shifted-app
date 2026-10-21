@@ -60,6 +60,42 @@ export const MAX_NICKNAME_LENGTH = 100
  */
 export type AccountStatus = 'signed-in' | 'signing-in' | 'signed-out'
 
+/**
+ * The page permissions that Shifted asks the person about, the first time a page of an
+ * account asks for them. `media` is the camera and the microphone together.
+ */
+export type AskedPermission = 'media' | 'display-capture' | 'clipboard-read'
+
+/** The asked permissions, in the order that the configuration window shows them. */
+export const ASKED_PERMISSIONS: readonly AskedPermission[] = [
+  'media',
+  'display-capture',
+  'clipboard-read'
+]
+
+export function isAskedPermission(value: unknown): value is AskedPermission {
+  return value === 'media' || value === 'display-capture' || value === 'clipboard-read'
+}
+
+/** The names of the asked permissions on screen. */
+export const ASKED_PERMISSION_NAMES: Readonly<Record<AskedPermission, string>> = {
+  media: 'Camera and microphone',
+  'display-capture': 'Screen sharing',
+  'clipboard-read': 'Clipboard read'
+}
+
+/** The answer of the person to an asked permission. */
+export type PermissionAnswer = 'allow' | 'deny'
+
+/** The saved answers of one account. A missing permission has no answer yet. */
+export type PagePermissions = Partial<Record<AskedPermission, PermissionAnswer>>
+
+/** The values of the General page of the configuration window. */
+export interface GeneralConfig {
+  /** Show a save dialog for each download. Off by default. */
+  askWhereToSave: boolean
+}
+
 /** One account, as the screens of Shifted see it. */
 export interface AccountState {
   id: string
@@ -72,12 +108,15 @@ export interface AccountState {
   lastGoogleApp: GoogleApp
   /** The saved profile photo as a `data:` URL, or `null` if Shifted has no photo. */
   photo: string | null
+  /** The saved answers to the asked page permissions. */
+  pagePermissions: PagePermissions
 }
 
 /** The state that the screens of Shifted show. */
 export interface ShiftedState {
   accounts: AccountState[]
   selectedAccountId: string | null
+  general: GeneralConfig
 }
 
 /** A rectangle in the window, in points, where a Google page shows. */
@@ -183,6 +222,30 @@ export interface ShiftedApi {
    * page. Returns a function that stops it.
    */
   onShowSettingsPage(listener: (request: SettingsRequest) => void): () => void
+  /** Turn "Ask where to save each file" on or off. */
+  setAskWhereToSave(value: boolean): void
+  /** Forget the saved answers to the page permissions of the account. */
+  resetPagePermissions(accountId: string): void
+  /** The screen picker only: the screens and windows that the person can share. */
+  getScreenSources(): Promise<ScreenPickerInfo>
+  /** The screen picker only: share this screen or window. `null` shares nothing. */
+  chooseScreenSource(sourceId: string | null): void
+}
+
+/** One screen or window that the screen picker lists. */
+export interface ScreenSource {
+  id: string
+  name: string
+  kind: 'screen' | 'window'
+  /** A small picture of the screen or window, as a `data:` URL. */
+  thumbnail: string
+}
+
+/** What the screen picker shows. */
+export interface ScreenPickerInfo {
+  /** The name of the account whose page asks to share the screen. */
+  accountName: string
+  sources: ScreenSource[]
 }
 
 export const IpcChannel = {
@@ -199,8 +262,15 @@ export const IpcChannel = {
   setNickname: 'shifted:set-nickname',
   setColor: 'shifted:set-color',
   setViewBounds: 'shifted:set-view-bounds',
-  showSettingsPage: 'shifted:show-settings-page'
+  showSettingsPage: 'shifted:show-settings-page',
+  setAskWhereToSave: 'shifted:set-ask-where-to-save',
+  resetPagePermissions: 'shifted:reset-page-permissions',
+  getScreenSources: 'shifted:get-screen-sources',
+  chooseScreenSource: 'shifted:choose-screen-source'
 } as const
 
 /** The URL hash of the screen at the top of the sign-in window. */
 export const SIGN_IN_SCREEN_HASH = 'sign-in'
+
+/** The URL hash of the screen picker. */
+export const SCREEN_PICKER_HASH = 'screen-picker'

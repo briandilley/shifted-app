@@ -14,6 +14,10 @@ mac:
   category: public.app-category.productivity
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
+  # macOS asks once for the camera and the microphone, and shows these reasons.
+  extendInfo:
+    NSCameraUsageDescription: A Gmail or Calendar page asks to use the camera, for example in a Google Chat huddle.
+    NSMicrophoneUsageDescription: A Gmail or Calendar page asks to use the microphone, for example in a Google Chat huddle.
 win:
   executableName: Shifted
 linux:

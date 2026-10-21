@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IpcChannel,
   type GoogleApp,
+  type ScreenPickerInfo,
   type SettingsRequest,
   type ShiftedApi,
   type ShiftedState,
@@ -42,7 +43,14 @@ const shifted: ShiftedApi = Object.freeze({
     ipcRenderer.send(IpcChannel.setColor, accountId, color),
   setViewBounds: (bounds: ViewBounds) => ipcRenderer.send(IpcChannel.setViewBounds, bounds),
   onShowSettingsPage: (listener: (request: SettingsRequest) => void) =>
-    listen(IpcChannel.showSettingsPage, listener)
+    listen(IpcChannel.showSettingsPage, listener),
+  setAskWhereToSave: (value: boolean) => ipcRenderer.send(IpcChannel.setAskWhereToSave, value),
+  resetPagePermissions: (accountId: string) =>
+    ipcRenderer.send(IpcChannel.resetPagePermissions, accountId),
+  getScreenSources: () =>
+    ipcRenderer.invoke(IpcChannel.getScreenSources) as Promise<ScreenPickerInfo>,
+  chooseScreenSource: (sourceId: string | null) =>
+    ipcRenderer.send(IpcChannel.chooseScreenSource, sourceId)
 })
 
 contextBridge.exposeInMainWorld('shifted', shifted)

@@ -7,6 +7,7 @@ import { setAppMenu } from './app-menu'
 import { ConfigStore } from './config'
 import { registerIpc } from './ipc'
 import { ProfilePhotos } from './profile-photos'
+import { ScreenPicker } from './screen-picker'
 import { SettingsWindow } from './settings-window'
 import {
   loadShiftedScreen,
@@ -75,12 +76,14 @@ void app.whenReady().then(() => {
   })
 
   const userData = app.getPath('userData')
+  const screenPicker = new ScreenPicker()
   const accounts = new Accounts(
     new ConfigStore(userData),
-    new ProfilePhotos(join(userData, 'photos'))
+    new ProfilePhotos(join(userData, 'photos')),
+    screenPicker
   )
   const settings = new SettingsWindow(accounts)
-  registerIpc(accounts, settings)
+  registerIpc(accounts, settings, screenPicker)
   setAppMenu({ openSettings: () => settings.open() })
   createMainWindow(accounts)
 

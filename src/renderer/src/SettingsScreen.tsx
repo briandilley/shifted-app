@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ACCOUNT_COLORS,
+  ASKED_PERMISSION_NAMES,
+  ASKED_PERMISSIONS,
   accountSettingsPage,
   isSameColor,
   MAX_NICKNAME_LENGTH,
   parseSettingsRequest,
   settingsPageAccountId,
   type AccountState,
+  type GeneralConfig,
   type SettingsFocus,
   type SettingsRequest
 } from '../../shared/api'
@@ -96,6 +99,8 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
         </div>
       </fieldset>
 
+      <PagePermissionsField account={account} />
+
       <div className={styles.actions}>
         <button
           type="button"
@@ -112,6 +117,69 @@ function AccountPage({ account, focus, requestId }: AccountPageProps): React.JSX
         >
           Remove
         </button>
+      </div>
+    </section>
+  )
+}
+
+/** The saved answers to the page permissions of an account, and the reset button. */
+function PagePermissionsField({ account }: { account: AccountState }): React.JSX.Element {
+  const saved = ASKED_PERMISSIONS.filter((permission) => account.pagePermissions[permission])
+  return (
+    <section className={styles.field} aria-labelledby={`permissions-${account.id}`}>
+      <h2 id={`permissions-${account.id}`} className={styles.label}>
+        Page permissions
+      </h2>
+      {saved.length === 0 ? (
+        <p className={styles.note}>
+          No saved answers. Shifted asks the first time a page asks for the camera and microphone,
+          screen sharing, or the clipboard.
+        </p>
+      ) : (
+        <ul className={styles.permissions}>
+          {saved.map((permission) => (
+            <li key={permission}>
+              {ASKED_PERMISSION_NAMES[permission]}:{' '}
+              {account.pagePermissions[permission] === 'allow' ? 'Allowed' : 'Denied'}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div>
+        <button
+          type="button"
+          className={styles.button}
+          disabled={saved.length === 0}
+          onClick={() => window.shifted.resetPagePermissions(account.id)}
+        >
+          Reset page permissions
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/** The General page. */
+function GeneralPage({ general }: { general: GeneralConfig }): React.JSX.Element {
+  return (
+    <section className={styles.page} aria-labelledby="page-title">
+      <h1 id="page-title" className={styles.title}>
+        General
+      </h1>
+      <div className={styles.field}>
+        <span className={styles.label}>Downloads</span>
+        <label className={styles.switch}>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={general.askWhereToSave}
+            onChange={(event) => window.shifted.setAskWhereToSave(event.target.checked)}
+          />
+          Ask where to save each file
+        </label>
+        <p className={styles.note}>
+          When this is off, Shifted saves each download in your Downloads folder.
+        </p>
       </div>
     </section>
   )
@@ -203,7 +271,7 @@ function SettingsScreen(): React.JSX.Element {
           ) : page === 'notifications' ? (
             <EmptyPage title="Notifications" />
           ) : (
-            <EmptyPage title="General" />
+            <GeneralPage general={state.general} />
           ))}
       </main>
     </div>

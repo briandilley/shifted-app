@@ -1,5 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { startFakeGoogle, type FakeGoogleServer } from '../fake-google/server'
+import {
+  CALENDAR_EVENT_PATH,
+  FAKE_DOWNLOAD_CONTENT,
+  FAKE_DOWNLOAD_NAME,
+  FAKE_DOWNLOAD_PATH,
+  MAILTO_LINK,
+  OUTSIDE_LINK,
+  startFakeGoogle,
+  type FakeGoogleServer
+} from '../fake-google/server'
 
 /** Sign in on the fake server with this address, and return the cookie header. */
 async function signIn(fakeGoogle: FakeGoogleServer, email?: string): Promise<string> {
@@ -118,5 +127,36 @@ describe('the fake Google test server', () => {
     expect(gmail.status).toBe(302)
     expect(gmail.headers.get('location')).toBe('/signin')
     expect(gmail.headers.get('set-cookie')).toContain('Max-Age=0')
+  })
+
+  it('serves the link pages: pop-out, Calendar event, outside links, mailto, microphone, download', async () => {
+    const cookie = await signIn(fakeGoogle, 'links@example.com')
+    const headers = { cookie }
+
+    const gmail = await (await fetch(`${fakeGoogle.url}/gmail/`, { headers })).text()
+    expect(gmail).toContain("window.open('about:blank'")
+    expect(gmail).toContain(`href="${CALENDAR_EVENT_PATH.replace('&', '&amp;')}" target="_blank"`)
+    expect(gmail).toContain(`href="${OUTSIDE_LINK}"`)
+    expect(gmail).toContain(`href="${MAILTO_LINK}"`)
+    expect(gmail).toContain('getUserMedia')
+    expect(gmail).toContain(`href="${FAKE_DOWNLOAD_PATH}"`)
+    expect(gmail).not.toContain('id="compose-url"')
+
+    const compose = await fetch(
+      `${fakeGoogle.url}/gmail/?extsrc=mailto&url=${encodeURIComponent(MAILTO_LINK)}`,
+      { headers }
+    )
+    expect(await compose.text()).toContain(`<p id="compose-url">${MAILTO_LINK}</p>`)
+
+    const event = await fetch(`${fakeGoogle.url}${CALENDAR_EVENT_PATH}`, { headers })
+    const eventHtml = await event.text()
+    expect(eventHtml).toContain('<p id="event">fake-event</p>')
+    expect(eventHtml).toContain('<p id="address">links@example.com</p>')
+
+    const download = await fetch(`${fakeGoogle.url}${FAKE_DOWNLOAD_PATH}`, { headers })
+    expect(download.headers.get('content-disposition')).toBe(
+      `attachment; filename="${FAKE_DOWNLOAD_NAME}"`
+    )
+    expect(await download.text()).toBe(FAKE_DOWNLOAD_CONTENT)
   })
 })

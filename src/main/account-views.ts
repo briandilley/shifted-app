@@ -8,11 +8,12 @@
 import { WebContentsView, type BrowserWindow, type WebContents } from 'electron'
 import { GOOGLE_APPS, type GoogleApp, type ViewBounds } from '../shared/api'
 import { accountSession, googlePageWebPreferences } from './account-session'
-import { calendarUrl, gmailUrl, isGmailUrl, isSignInPageUrl } from './google-urls'
+import { calendarUrl, gmailUrl, isGmailUrl } from './google-urls'
+import { applyLinkRules, type LinkHandlers } from './link-handlers'
 
 export interface AccountViewHandlers {
-  /** A view of the account tried to go to Google's sign-in page. */
-  onSignedOut(accountId: string): void
+  /** The link rules of the account pages. */
+  links: LinkHandlers
   /** Gmail of the account finished loading. */
   onGmailLoaded(accountId: string, gmail: WebContents): void
 }
@@ -47,15 +48,27 @@ export class AccountViews {
     return this.views.get(accountId)?.get(googleApp)
   }
 
-  /** Make the view of a Google app of an account, if it does not exist yet. */
-  ensure(accountId: string, googleApp: GoogleApp): WebContentsView {
+  /**
+   * Make the view of a Google app of an account, if it does not exist yet.
+   *
+   * @param url The first URL of a new view. Without it, the view loads the first page of
+   *   the Google app.
+   */
+  ensure(accountId: string, googleApp: GoogleApp, url?: string): WebContentsView {
     const existing = this.get(accountId, googleApp)
     if (existing) return existing
-    const view = this.create(accountId, googleApp)
+    const view = this.create(accountId, googleApp, url ?? googleAppUrl(googleApp))
     const accountViews = this.views.get(accountId) ?? new Map<GoogleApp, WebContentsView>()
     accountViews.set(googleApp, view)
     this.views.set(accountId, accountViews)
     return view
+  }
+
+  /** Load a URL in the view of a Google app of an account. Make the view if needed. */
+  load(accountId: string, googleApp: GoogleApp, url: string): void {
+    const existing = this.get(accountId, googleApp)
+    if (existing) existing.webContents.loadURL(url).catch(ignore)
+    else this.ensure(accountId, googleApp, url)
   }
 
   /** Load the first page again in each view of the account, for example after sign-in. */
@@ -107,24 +120,15 @@ export class AccountViews {
     }
   }
 
-  private create(accountId: string, googleApp: GoogleApp): WebContentsView {
+  private create(accountId: string, googleApp: GoogleApp, url: string): WebContentsView {
     const view = new WebContentsView({
       webPreferences: googlePageWebPreferences(accountSession(accountId))
     })
     const page = view.webContents
 
-    // Prompt 03 adds the link rules. Until then, the Google apps open no new windows.
-    page.setWindowOpenHandler(() => ({ action: 'deny' }))
-
-    // Shifted never shows Google's sign-in page in the content area. If a Google app goes
-    // there, Google signed the account out.
-    const stopSignInPage = (event: Electron.Event, url: string, isMainFrame: boolean): void => {
-      if (!isMainFrame || !isSignInPageUrl(url)) return
-      event.preventDefault()
-      this.handlers.onSignedOut(accountId)
-    }
-    page.on('will-navigate', (event) => stopSignInPage(event, event.url, event.isMainFrame))
-    page.on('will-redirect', (event) => stopSignInPage(event, event.url, event.isMainFrame))
+    // The link rules decide where each link and each new window goes. They also stop
+    // Google's sign-in page, which never shows in the content area.
+    applyLinkRules(page, accountId, googleApp, this.handlers.links)
 
     if (googleApp === 'gmail') {
       page.on('did-finish-load', () => {
@@ -135,7 +139,7 @@ export class AccountViews {
     view.setBounds(this.bounds)
     view.setVisible(false)
     this.window.contentView.addChildView(view)
-    page.loadURL(googleAppUrl(googleApp)).catch(ignore)
+    page.loadURL(url).catch(ignore)
     return view
   }
 

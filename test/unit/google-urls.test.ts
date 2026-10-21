@@ -4,7 +4,11 @@ import { join, relative, resolve } from 'node:path'
 import {
   calendarUrl,
   feedUrl,
+  gmailComposeUrl,
   gmailUrl,
+  googleRedirectTarget,
+  isCalendarLink,
+  isGmailLink,
   isProfilePhotoUrl,
   isTestMode,
   signInUrl
@@ -70,6 +74,52 @@ describe('google-urls', () => {
     expect(isProfilePhotoUrl('http://127.0.0.1:4555/avatar.png')).toBe(true)
     expect(isProfilePhotoUrl('http://127.0.0.1:4556/avatar.png')).toBe(false)
     expect(isProfilePhotoUrl('https://lh3.googleusercontent.com/ogw/abc')).toBe(false)
+  })
+
+  it('knows Gmail links and Calendar links by their https host', () => {
+    expect(isGmailLink('https://mail.google.com/mail/u/0/?view=pt')).toBe(true)
+    expect(isGmailLink('https://mail.google.com/')).toBe(true)
+    expect(isGmailLink('http://mail.google.com/mail/u/0/')).toBe(false)
+    expect(isGmailLink('https://calendar.google.com/calendar/r')).toBe(false)
+    expect(isGmailLink('https://mail.google.com.example.com/')).toBe(false)
+    expect(isCalendarLink('https://calendar.google.com/calendar/event?eid=abc')).toBe(true)
+    expect(isCalendarLink('https://mail.google.com/mail/u/0/')).toBe(false)
+    expect(isCalendarLink('not a url')).toBe(false)
+  })
+
+  it('knows Gmail links and Calendar links by their path on the test server', () => {
+    process.env['SHIFTED_TEST_SERVER'] = 'http://127.0.0.1:4555'
+    expect(isGmailLink('http://127.0.0.1:4555/gmail/?extsrc=mailto')).toBe(true)
+    expect(isGmailLink('http://127.0.0.1:4555/calendar/')).toBe(false)
+    expect(isCalendarLink('http://127.0.0.1:4555/calendar/event?eid=x')).toBe(true)
+    expect(isCalendarLink('http://127.0.0.1:4556/calendar/event?eid=x')).toBe(false)
+    expect(isGmailLink('https://mail.google.com/mail/u/0/')).toBe(false)
+  })
+
+  it('makes the Gmail compose URL for a mailto: link', () => {
+    expect(gmailComposeUrl('mailto:a@example.com?subject=Hi there')).toBe(
+      'https://mail.google.com/mail/u/0/?extsrc=mailto&url=mailto%3Aa%40example.com%3Fsubject%3DHi%20there'
+    )
+    process.env['SHIFTED_TEST_SERVER'] = 'http://127.0.0.1:4555'
+    expect(gmailComposeUrl('mailto:a@example.com')).toBe(
+      'http://127.0.0.1:4555/gmail/?extsrc=mailto&url=mailto%3Aa%40example.com'
+    )
+  })
+
+  it('reads the target of the Google redirect page', () => {
+    const target = 'https://calendar.google.com/calendar/event?eid=abc&tok=1'
+    expect(googleRedirectTarget(`https://www.google.com/url?q=${encodeURIComponent(target)}`)).toBe(
+      target
+    )
+    expect(
+      googleRedirectTarget(`https://www.google.com/url?url=${encodeURIComponent(target)}`)
+    ).toBe(target)
+    expect(googleRedirectTarget('https://www.google.com/url?q=javascript:alert(1)')).toBeUndefined()
+    expect(
+      googleRedirectTarget('https://www.google.com/search?q=https://example.com')
+    ).toBeUndefined()
+    expect(googleRedirectTarget('https://example.com/url?q=https://example.com')).toBeUndefined()
+    expect(googleRedirectTarget('not a url')).toBeUndefined()
   })
 
   it('accepts a test server URL with a trailing slash', () => {

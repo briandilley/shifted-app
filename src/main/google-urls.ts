@@ -106,6 +106,81 @@ export function isSignInPageUrl(url: string): boolean {
   )
 }
 
+const GMAIL_HOST = 'mail.google.com'
+const CALENDAR_HOST = 'calendar.google.com'
+const GMAIL_COMPOSE_URL = 'https://mail.google.com/mail/u/0/?extsrc=mailto&url='
+const REDIRECT_HOST = 'www.google.com'
+const REDIRECT_PATH = '/url'
+
+const TEST_CALENDAR_PATH_PREFIX = '/calendar/'
+
+/** True when the URL is on the fake server and its path starts with the prefix. */
+function isTestServerPath(parsed: URL, server: string, prefix: string): boolean {
+  return parsed.origin === new URL(server).origin && parsed.pathname.startsWith(prefix)
+}
+
+/**
+ * True when the URL is a Gmail link: an `https:` URL on the Gmail host
+ * (`mail.google.com`), with any path. The link rules use it (see `link-rules.ts`).
+ * In test mode, true for a URL under the fake Gmail (`<server>/gmail/`).
+ */
+export function isGmailLink(url: string): boolean {
+  const parsed = parseUrl(url)
+  if (!parsed) return false
+  const server = testServerUrl()
+  if (server) return isTestServerPath(parsed, server, TEST_GMAIL_PATH_PREFIX)
+  return parsed.protocol === 'https:' && parsed.hostname === GMAIL_HOST
+}
+
+/**
+ * True when the URL is a Calendar link: an `https:` URL on the Calendar host
+ * (`calendar.google.com`), with any path. In test mode, true for a URL under the fake
+ * Calendar (`<server>/calendar/`).
+ */
+export function isCalendarLink(url: string): boolean {
+  const parsed = parseUrl(url)
+  if (!parsed) return false
+  const server = testServerUrl()
+  if (server) return isTestServerPath(parsed, server, TEST_CALENDAR_PATH_PREFIX)
+  return parsed.protocol === 'https:' && parsed.hostname === CALENDAR_HOST
+}
+
+/**
+ * The URL of a new message in Gmail for a `mailto:` link:
+ * `https://mail.google.com/mail/u/0/?extsrc=mailto&url=<encoded mailto URL>`.
+ * In test mode, the same query on the fake Gmail (`<server>/gmail/`).
+ */
+export function gmailComposeUrl(mailtoUrl: string): string {
+  const server = testServerUrl()
+  const base = server ? `${server}/gmail/?extsrc=mailto&url=` : GMAIL_COMPOSE_URL
+  return `${base}${encodeURIComponent(mailtoUrl)}`
+}
+
+/**
+ * The target of a link that goes through Google's redirect page
+ * (`https://www.google.com/url?q=<target>`), or `undefined` if the URL is not such a
+ * link or its target is not an `http:` or `https:` URL. Gmail sends some links in
+ * messages through this page. In test mode, the redirect page is `<server>/url`.
+ */
+export function googleRedirectTarget(url: string): string | undefined {
+  const parsed = parseUrl(url)
+  if (!parsed) return undefined
+  const server = testServerUrl()
+  const isRedirect = server
+    ? parsed.origin === new URL(server).origin && parsed.pathname === REDIRECT_PATH
+    : parsed.protocol === 'https:' &&
+      parsed.hostname === REDIRECT_HOST &&
+      parsed.pathname === REDIRECT_PATH
+  if (!isRedirect) return undefined
+  const target = parsed.searchParams.get('q') ?? parsed.searchParams.get('url')
+  if (!target) return undefined
+  const parsedTarget = parseUrl(target)
+  if (!parsedTarget) return undefined
+  return parsedTarget.protocol === 'https:' || parsedTarget.protocol === 'http:'
+    ? target
+    : undefined
+}
+
 /** The hosts that serve Google profile photos, and every host below them. */
 const PROFILE_PHOTO_HOSTS = ['googleusercontent.com', 'gstatic.com', 'google.com']
 

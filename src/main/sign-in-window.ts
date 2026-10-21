@@ -10,6 +10,7 @@ import icon from '../../resources/icon.png?asset'
 import { SIGN_IN_SCREEN_HASH, type ViewBounds } from '../shared/api'
 import { googlePageWebPreferences } from './account-session'
 import { signInUrl } from './google-urls'
+import { routeNavigation } from './link-rules'
 import { isSignInFinished } from './sign-in'
 import {
   loadShiftedScreen,
@@ -56,8 +57,16 @@ export class SignInWindow {
     // Rule 3 of "Links": every page stays in the sign-in window. A page that asks for a
     // new window opens in the sign-in window. The default browser never opens.
     page.setWindowOpenHandler(({ url }) => {
-      if (/^https?:/i.test(url)) page.loadURL(url).catch(ignore)
+      if (routeNavigation(url, { source: 'sign-in', kind: 'new-window' }) === 'stay') {
+        page.loadURL(url).catch(ignore)
+      }
       return { action: 'deny' }
+    })
+    page.on('will-navigate', (event) => {
+      if (!event.isMainFrame) return
+      if (routeNavigation(event.url, { source: 'sign-in', kind: 'navigation' }) !== 'stay') {
+        event.preventDefault()
+      }
     })
 
     page.on('did-navigate', (_event, url) => {

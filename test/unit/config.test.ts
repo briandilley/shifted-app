@@ -20,8 +20,11 @@ const ACCOUNT: AccountConfig = {
   nickname: 'Work',
   color: '#1A73E8',
   order: 0,
-  lastGoogleApp: 'gmail'
+  lastGoogleApp: 'gmail',
+  pagePermissions: {}
 }
+
+const GENERAL = { askWhereToSave: false }
 
 describe('ConfigStore', () => {
   let dir: string
@@ -37,37 +40,42 @@ describe('ConfigStore', () => {
   })
 
   it('starts with an empty list when the file is missing', () => {
-    expect(store.load()).toEqual({ version: CONFIG_VERSION, accounts: [] })
+    expect(store.load()).toEqual({ version: CONFIG_VERSION, general: GENERAL, accounts: [] })
     expect(existsSync(join(dir, 'config.broken.json'))).toBe(false)
   })
 
   it('writes config.json and reads it again', () => {
-    const config: Config = { version: CONFIG_VERSION, accounts: [ACCOUNT] }
+    const config: Config = {
+      version: CONFIG_VERSION,
+      general: { askWhereToSave: true },
+      accounts: [{ ...ACCOUNT, pagePermissions: { media: 'allow', 'clipboard-read': 'deny' } }]
+    }
     store.save(config)
     const json = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8')) as unknown
-    expect(json).toEqual({ version: 1, accounts: [ACCOUNT] })
+    expect(json).toEqual(config)
     expect(new ConfigStore(dir).load()).toEqual(config)
   })
 
   it('writes atomically and leaves no temporary file', () => {
-    store.save({ version: CONFIG_VERSION, accounts: [ACCOUNT] })
-    store.save({ version: CONFIG_VERSION, accounts: [] })
+    store.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [ACCOUNT] })
+    store.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [] })
     expect(readdirSync(dir)).toEqual(['config.json'])
     expect(store.load().accounts).toEqual([])
   })
 
   it('makes the folder if it does not exist', () => {
     const nested = new ConfigStore(join(dir, 'a', 'b'))
-    nested.save({ version: CONFIG_VERSION, accounts: [ACCOUNT] })
+    nested.save({ version: CONFIG_VERSION, general: GENERAL, accounts: [ACCOUNT] })
     expect(nested.load().accounts).toEqual([ACCOUNT])
   })
 
   it('keeps a copy of a file that is not JSON and starts with an empty list', () => {
     writeFileSync(join(dir, 'config.json'), '{ this is not json')
-    expect(store.load()).toEqual({ version: CONFIG_VERSION, accounts: [] })
+    expect(store.load()).toEqual({ version: CONFIG_VERSION, general: GENERAL, accounts: [] })
     expect(readFileSync(join(dir, 'config.broken.json'), 'utf8')).toBe('{ this is not json')
     expect(JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'))).toEqual({
       version: 1,
+      general: GENERAL,
       accounts: []
     })
   })
@@ -101,6 +109,34 @@ describe('parseConfig', () => {
     ).toBeUndefined()
     expect(parseConfig({ version: 1, accounts: [ACCOUNT, ACCOUNT] })).toBeUndefined()
   })
+
+  it('reads a file from phase 02, with no General values and no page permissions', () => {
+    const oldAccount: Record<string, unknown> = { ...ACCOUNT }
+    delete oldAccount['pagePermissions']
+    expect(parseConfig({ version: 1, accounts: [oldAccount] })).toEqual({
+      version: 1,
+      general: GENERAL,
+      accounts: [ACCOUNT]
+    })
+  })
+
+  it('refuses wrong General values and wrong page permissions', () => {
+    const withPermissions = (pagePermissions: unknown): unknown => ({
+      version: 1,
+      accounts: [{ ...ACCOUNT, pagePermissions }]
+    })
+    expect(parseConfig({ version: 1, general: [], accounts: [] })).toBeUndefined()
+    expect(
+      parseConfig({ version: 1, general: { askWhereToSave: 'yes' }, accounts: [] })
+    ).toBeUndefined()
+    expect(parseConfig(withPermissions({ media: 'maybe' }))).toBeUndefined()
+    expect(parseConfig(withPermissions({ geolocation: 'allow' }))).toBeUndefined()
+    expect(parseConfig(withPermissions('allow'))).toBeUndefined()
+    expect(parseConfig(withPermissions({ 'display-capture': 'deny' }))?.accounts[0]).toEqual({
+      ...ACCOUNT,
+      pagePermissions: { 'display-capture': 'deny' }
+    })
+  })
 })
 
 describe('newAccount', () => {
@@ -112,7 +148,8 @@ describe('newAccount', () => {
       nickname: '',
       color: ACCOUNT_COLORS[0],
       order: 0,
-      lastGoogleApp: 'gmail'
+      lastGoogleApp: 'gmail',
+      pagePermissions: {}
     })
   })
 

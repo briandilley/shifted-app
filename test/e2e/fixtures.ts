@@ -154,6 +154,7 @@ export async function visibleGoogleApp(app: ElectronApplication): Promise<Visibl
 
 export interface ConfigFile {
   version: number
+  general: { askWhereToSave: boolean }
   accounts: {
     id: string
     email: string
@@ -161,6 +162,7 @@ export interface ConfigFile {
     color: string
     order: number
     lastGoogleApp: string
+    pagePermissions: Record<string, string>
   }[]
 }
 
@@ -312,6 +314,41 @@ export async function openSettingsFromAppMenu(app: ElectronApplication): Promise
 /** The page of the configuration window. */
 export function settingsWindowPage(app: ElectronApplication): Promise<Page> {
   return findPage(app, (url) => url.startsWith('file:') && url.includes('#settings'))
+}
+
+/** The page of the Gmail view in the main window, by its URL. */
+export function gmailViewPage(
+  app: ElectronApplication,
+  fakeGoogle: FakeGoogleServer
+): Promise<Page> {
+  return findPage(app, (url) => url === `${fakeGoogle.url}/gmail/`)
+}
+
+/** What Shifted recorded in test mode in place of the default browser and the file manager. */
+export interface TestRecords {
+  openExternal: string[]
+  showItemInFolder: string[]
+  downloadNotifications: number
+}
+
+interface TestRecordsHolder {
+  shiftedTestRecords?: {
+    openExternal: string[]
+    showItemInFolder: string[]
+    downloadNotifications: unknown[]
+  }
+}
+
+/** Read the test records of Shifted (see `src/main/test-hooks.ts`). */
+export function testRecords(app: ElectronApplication): Promise<TestRecords> {
+  return app.evaluate(() => {
+    const records = (globalThis as TestRecordsHolder).shiftedTestRecords
+    return {
+      openExternal: [...(records?.openExternal ?? [])],
+      showItemInFolder: [...(records?.showItemInFolder ?? [])],
+      downloadNotifications: records?.downloadNotifications.length ?? 0
+    }
+  })
 }
 
 export { expect } from '@playwright/test'

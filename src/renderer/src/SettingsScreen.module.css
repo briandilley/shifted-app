@@ -208,3 +208,23 @@
 .danger {
   color: var(--danger);
 }
+
+.note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.permissions {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}

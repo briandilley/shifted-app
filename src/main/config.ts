@@ -6,9 +6,17 @@
 import { randomUUID } from 'node:crypto'
 import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ACCOUNT_COLORS, isGoogleApp, isSameColor, type GoogleApp } from '../shared/api'
+import {
+  ACCOUNT_COLORS,
+  isAskedPermission,
+  isGoogleApp,
+  isSameColor,
+  type GeneralConfig,
+  type GoogleApp,
+  type PagePermissions
+} from '../shared/api'
 
-export { ACCOUNT_COLORS, type GoogleApp }
+export { ACCOUNT_COLORS, type GeneralConfig, type GoogleApp, type PagePermissions }
 
 /** The version of the format of the configuration file. A later prompt can change it. */
 export const CONFIG_VERSION = 1
@@ -29,17 +37,26 @@ export interface AccountConfig {
   order: number
   /** The Google app that the person used last in this account. */
   lastGoogleApp: GoogleApp
+  /** The saved answers to the asked page permissions. Missing in a file from phase 02. */
+  pagePermissions: PagePermissions
 }
 
 export interface Config {
   version: typeof CONFIG_VERSION
+  /** The values of the General page. Missing in a file from phase 02. */
+  general: GeneralConfig
   accounts: AccountConfig[]
+}
+
+/** The General values of a new configuration. */
+export function defaultGeneralConfig(): GeneralConfig {
+  return { askWhereToSave: false }
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function emptyConfig(): Config {
-  return { version: CONFIG_VERSION, accounts: [] }
+  return { version: CONFIG_VERSION, general: defaultGeneralConfig(), accounts: [] }
 }
 
 /** True when the value is a UUID, so that it is safe in a partition name. */
@@ -51,6 +68,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** Read the saved page permissions. A missing value has no saved answers. */
+function parsePagePermissions(value: unknown): PagePermissions | undefined {
+  if (value === undefined) return {}
+  if (!isRecord(value)) return undefined
+  const permissions: PagePermissions = {}
+  for (const [permission, answer] of Object.entries(value)) {
+    if (!isAskedPermission(permission)) return undefined
+    if (answer !== 'allow' && answer !== 'deny') return undefined
+    permissions[permission] = answer
+  }
+  return permissions
+}
+
+/** Read the General values. A missing value or field gets the default. */
+function parseGeneralConfig(value: unknown): GeneralConfig | undefined {
+  const general = defaultGeneralConfig()
+  if (value === undefined) return general
+  if (!isRecord(value)) return undefined
+  const { askWhereToSave } = value
+  if (askWhereToSave !== undefined) {
+    if (typeof askWhereToSave !== 'boolean') return undefined
+    general.askWhereToSave = askWhereToSave
+  }
+  return general
+}
+
 function parseAccount(value: unknown): AccountConfig | undefined {
   if (!isRecord(value)) return undefined
   const { id, email, nickname, color, order, lastGoogleApp } = value
@@ -59,7 +102,9 @@ function parseAccount(value: unknown): AccountConfig | undefined {
   if (typeof color !== 'string' || color === '') return undefined
   if (typeof order !== 'number' || !Number.isInteger(order) || order < 0) return undefined
   if (!isGoogleApp(lastGoogleApp)) return undefined
-  return { id, email, nickname, color, order, lastGoogleApp }
+  const pagePermissions = parsePagePermissions(value['pagePermissions'])
+  if (!pagePermissions) return undefined
+  return { id, email, nickname, color, order, lastGoogleApp, pagePermissions }
 }
 
 /**
@@ -70,6 +115,8 @@ function parseAccount(value: unknown): AccountConfig | undefined {
 export function parseConfig(value: unknown): Config | undefined {
   if (!isRecord(value)) return undefined
   if (value['version'] !== CONFIG_VERSION) return undefined
+  const general = parseGeneralConfig(value['general'])
+  if (!general) return undefined
   const accounts = value['accounts']
   if (!Array.isArray(accounts)) return undefined
   const parsed: AccountConfig[] = []
@@ -81,7 +128,7 @@ export function parseConfig(value: unknown): Config | undefined {
     parsed.push(account)
   }
   parsed.sort((a, b) => a.order - b.order)
-  return { version: CONFIG_VERSION, accounts: parsed }
+  return { version: CONFIG_VERSION, general, accounts: parsed }
 }
 
 /**
@@ -109,7 +156,8 @@ export function newAccount(existing: readonly AccountConfig[]): AccountConfig {
     nickname: '',
     color: nextAccountColor(existing),
     order: lastOrder + 1,
-    lastGoogleApp: 'gmail'
+    lastGoogleApp: 'gmail',
+    pagePermissions: {}
   }
 }
 

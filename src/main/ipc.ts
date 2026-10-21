@@ -7,6 +7,7 @@ import { IpcChannel, isGoogleApp, type SettingsRequest, type ViewBounds } from '
 import { buildAccountMenu } from './account-menu'
 import type { Accounts } from './accounts'
 import { isAccountId } from './config'
+import type { ScreenPicker } from './screen-picker'
 import type { SettingsWindow } from './settings-window'
 
 function parseBounds(value: unknown): ViewBounds | undefined {
@@ -28,7 +29,11 @@ function logError(action: string): (error: unknown) => void {
   }
 }
 
-export function registerIpc(accounts: Accounts, settings: SettingsWindow): void {
+export function registerIpc(
+  accounts: Accounts,
+  settings: SettingsWindow,
+  screenPicker: ScreenPicker
+): void {
   const isMainScreen = (sender: WebContents): boolean => accounts.isMainScreen(sender)
   /** The main window or the configuration window. */
   const isShiftedScreen = (sender: WebContents): boolean =>
@@ -113,5 +118,26 @@ export function registerIpc(accounts: Accounts, settings: SettingsWindow): void 
     if (!bounds) return
     if (!accounts.isMainScreen(event.sender) && !accounts.isSignInScreen(event.sender)) return
     accounts.setViewBounds(event.sender, bounds)
+  })
+
+  ipcMain.on(IpcChannel.setAskWhereToSave, (event, value: unknown) => {
+    if (!isShiftedScreen(event.sender) || typeof value !== 'boolean') return
+    accounts.setAskWhereToSave(value)
+  })
+
+  ipcMain.on(IpcChannel.resetPagePermissions, (event, accountId: unknown) => {
+    if (!isShiftedScreen(event.sender) || !isAccountId(accountId)) return
+    accounts.resetPagePermissions(accountId)
+  })
+
+  ipcMain.handle(IpcChannel.getScreenSources, (event) => {
+    if (!screenPicker.isScreen(event.sender)) throw new Error('Not the screen picker.')
+    return screenPicker.info()
+  })
+
+  ipcMain.on(IpcChannel.chooseScreenSource, (event, sourceId: unknown) => {
+    if (!screenPicker.isScreen(event.sender)) return
+    if (sourceId !== null && typeof sourceId !== 'string') return
+    screenPicker.choose(sourceId)
   })
 }

@@ -15,6 +15,12 @@
  *
  * The fake Gmail page shows the profile photo `/avatar.png` where `src/main/gmail-page.ts`
  * looks for it. The photo is a square in a color that depends on the address.
+ *
+ * The fake Gmail page also has the links that the link rules handle: a pop-out that opens
+ * `about:blank` and writes a fake compose form into it, a link to a fake Calendar event,
+ * links to an outside page, a `mailto:` link, a button that asks for the microphone, and
+ * a file download. With `?extsrc=mailto&url=<mailto URL>`, it shows the `mailto:` URL in
+ * `#compose-url`, like a new message in Gmail.
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -200,6 +206,65 @@ function atomFeed(state: FakeGoogleState, address: string): string {
 `
 }
 
+/**
+ * The file that the fake Gmail page offers for download. Like a Gmail attachment, the
+ * download starts on a Gmail page, so that the link rules keep it in Shifted.
+ */
+export const FAKE_DOWNLOAD_NAME = 'report.txt'
+export const FAKE_DOWNLOAD_PATH = '/gmail/attachment'
+export const FAKE_DOWNLOAD_CONTENT = 'A fake report from the fake Gmail.\n'
+/** The outside pages that the fake Gmail page links to. */
+export const OUTSIDE_LINK = 'https://example.com/doc'
+export const OUTSIDE_NEW_WINDOW_LINK = 'https://example.com/new-window'
+export const MAILTO_LINK = 'mailto:friend@example.com?subject=Hello'
+/** The path of the fake Calendar event that the fake Gmail page links to. */
+export const CALENDAR_EVENT_PATH = '/calendar/event?eid=fake-event'
+
+/** The script of the fake Gmail page: the pop-out and the microphone button. */
+const FAKE_GMAIL_SCRIPT = `
+document.getElementById('pop-out').addEventListener('click', () => {
+  const popOut = window.open('about:blank', '_blank', 'width=520,height=480')
+  if (!popOut) return
+  popOut.document.write('<!doctype html><title>Compose</title><h1 id="compose-title">Fake compose</h1>' +
+    '<form id="compose"><label>To <input name="to"></label> <label>Subject <input name="subject"></label>' +
+    '<textarea name="body"></textarea><button type="submit">Send</button></form>')
+  popOut.document.close()
+})
+document.getElementById('microphone').addEventListener('click', () => {
+  const status = document.getElementById('microphone-status')
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(
+    (stream) => {
+      stream.getTracks().forEach((track) => track.stop())
+      status.textContent = 'allowed'
+    },
+    (error) => {
+      status.textContent = error.name
+    }
+  )
+})
+`
+
+/** The links of the fake Gmail page. */
+function fakeGmailLinks(url: URL): string {
+  const compose =
+    url.searchParams.get('extsrc') === 'mailto'
+      ? `\n    <p id="compose-url">${escapeHtml(url.searchParams.get('url') ?? '')}</p>`
+      : ''
+  return `${compose}
+    <nav>
+      <button id="pop-out" type="button">Pop out</button>
+      <a id="calendar-link" href="${escapeHtml(CALENDAR_EVENT_PATH)}" target="_blank">Fake invitation</a>
+      <a id="outside-link" href="${OUTSIDE_LINK}">Outside document</a>
+      <a id="outside-new-window-link" href="${OUTSIDE_NEW_WINDOW_LINK}" target="_blank">Outside page in a new window</a>
+      <a id="mailto-link" href="${escapeHtml(MAILTO_LINK)}">Write to a friend</a>
+      <button id="microphone" type="button">Use the microphone</button>
+      <span id="microphone-status"></span>
+      <a id="download-link" href="${FAKE_DOWNLOAD_PATH}">Download the report</a>
+      <a id="download-new-window-link" href="${FAKE_DOWNLOAD_PATH}" target="_blank">Download the report in a new window</a>
+    </nav>
+    <script>${FAKE_GMAIL_SCRIPT}</script>`
+}
+
 /** The routes of the fake server. */
 export const routes: Route[] = [
   {
@@ -220,8 +285,45 @@ export const routes: Route[] = [
       <a href="/SignOutOptions" aria-label="Google Account: ${escapeHtml(session.address)}"><img class="gbii" src="/avatar.png" alt="" width="32" height="32" /></a>
     </header>
     <h1>Fake Gmail</h1>
+    <p id="address">${escapeHtml(session.address)}</p>${fakeGmailLinks(context.url)}`
+      )
+    }
+  },
+  {
+    method: 'GET',
+    path: '/calendar/event',
+    handler: (context) => {
+      const { res, url } = context
+      const session = currentSession(context)
+      if (!session) {
+        redirect(res, '/signin', clearCookieHeaders(context))
+        return
+      }
+      sendHtml(
+        res,
+        'Calendar event',
+        `    <h1>Fake Calendar event</h1>
+    <p id="event">${escapeHtml(url.searchParams.get('eid') ?? '')}</p>
     <p id="address">${escapeHtml(session.address)}</p>`
       )
+    }
+  },
+  {
+    method: 'GET',
+    path: FAKE_DOWNLOAD_PATH,
+    handler: (context) => {
+      const { res } = context
+      if (!currentSession(context)) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('No file')
+        return
+      }
+      res.writeHead(200, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${FAKE_DOWNLOAD_NAME}"`,
+        'Cache-Control': 'no-store'
+      })
+      res.end(FAKE_DOWNLOAD_CONTENT)
     }
   },
   {
