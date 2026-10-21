@@ -7,8 +7,8 @@
 | 02    | done    | 355e920 | 0               | Eight colors from the prompt, lazy view loading, native context menu, a minimal app menu for Cmd+comma, photo saved as a 96x96 PNG.              |
 | 03    | done    | 6f537c3 | 0               | Main-frame routing only, child windows titled by address, saved camera and microphone answers, screen share asks first, unique download names.   |
 | 04    | done    | dbbbd21 | 0               | Feed read with net.request (session.fetch hides redirects), fast-xml-parser, English-only Gmail title for Automatic, counts kept in memory only. |
-| 05    | running |         | 0               |                                                                                                                                                  |
-| 06    | todo    |         | 0               |                                                                                                                                                  |
+| 05    | done    | a498bef | 0               | Quiet hours as daily range plus quiet weekdays, snooze saved in config.json, page preload in every frame, page Notification calls replaced.      |
+| 06    | running |         | 0               |                                                                                                                                                  |
 | 07    | todo    |         | 0               |                                                                                                                                                  |
 | 08    | todo    |         | 0               |                                                                                                                                                  |
 | 09    | todo    |         | 0               |                                                                                                                                                  |
