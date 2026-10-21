@@ -1,0 +1,40 @@
+:root {
+  color-scheme: light dark;
+  --background: #ffffff;
+  --text: #1f1f1f;
+  --text-muted: #5f6368;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Ubuntu,
+    sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1f1f1f;
+    --text: #e8eaed;
+    --text-muted: #9aa0a6;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--text);
+  user-select: none;
+}

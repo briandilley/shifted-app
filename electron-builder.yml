@@ -1,0 +1,23 @@
+# Minimal configuration. Prompt 10 adds the installers, signing, and auto-update.
+appId: io.github.briandilley.shifted
+productName: Shifted
+directories:
+  buildResources: build
+  output: dist
+files:
+  - 'out/**/*'
+  - 'resources/**/*'
+  - 'package.json'
+asarUnpack:
+  - resources/**
+mac:
+  category: public.app-category.productivity
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+win:
+  executableName: Shifted
+linux:
+  target:
+    - AppImage
+  category: Network
+npmRebuild: false

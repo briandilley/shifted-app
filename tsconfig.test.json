@@ -1,0 +1,11 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "include": ["test/**/*", "vitest.config.mts", "playwright.config.ts", "src/main/**/*"],
+  "compilerOptions": {
+    "composite": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node", "electron-vite/node"]
+  }
+}
