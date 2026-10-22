@@ -149,9 +149,11 @@ export class WindowStateKeeper {
   }
 
   private save(window: BrowserWindow): void {
-    if (!this.shown || window.isDestroyed() || window.isMinimized() || window.isFullScreen()) {
-      return
-    }
+    if (window.isDestroyed()) return
+    // The `show` event does not always come, for example on macOS while the screen is
+    // locked. A visible window counts as shown.
+    if (window.isVisible()) this.shown = true
+    if (!this.shown || window.isMinimized() || window.isFullScreen()) return
     const state: WindowState = { bounds: window.getNormalBounds(), maximized: window.isMaximized() }
     try {
       mkdirSync(dirname(this.path), { recursive: true })
