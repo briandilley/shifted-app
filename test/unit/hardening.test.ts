@@ -186,6 +186,7 @@ describe('the accessible name of an account in the sidebar', () => {
       unreadFeed: 'primary',
       automaticFeedLearned: false,
       pageProblems: {},
+      checkingSignIn: [],
       ...change
     }
   }

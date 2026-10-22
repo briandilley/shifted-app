@@ -80,16 +80,28 @@ function ContentPanel({ account, addAccountFirst }: ContentPanelProps): React.JS
           </div>
         )
       }
+      // The page of the Google app went to Google's sign-in host. Shifted hides it while
+      // it checks the feed of the account, so that Google's sign-in page never shows.
+      if (account.checkingSignIn.includes(account.lastGoogleApp)) {
+        return (
+          <p className={styles.message} role="status" data-checking-sign-in>
+            {MAIN.loading}
+          </p>
+        )
+      }
       // The view of the Google app covers the content area.
       return <></>
     }
   }
 }
 
-/** The address of the selected account at the right end of the top row. */
+/**
+ * The address of the selected account at the right end of the top row. A long address
+ * ends with an ellipsis, and its tooltip shows the whole address.
+ */
 function SelectedAccount({ account }: { account: AccountState }): React.JSX.Element {
   return (
-    <p className={styles.selectedAccount} data-selected-account>
+    <p className={styles.selectedAccount} title={accountName(account)} data-selected-account>
       <span
         className={styles.dot}
         style={{ '--account-color': account.color } as CSSProperties}

@@ -85,9 +85,11 @@ export function testRecords(): ShiftedTestRecords | undefined {
  *
  * - `SHIFTED_TEST_SLEEP_MS`: the time from leaving a Google app to its sleep.
  * - `SHIFTED_TEST_READ_INTERVAL_MS`: the time between two reads of the feed of an account.
+ * - `SHIFTED_TEST_SIGN_IN_CHECK_MS`: the time limit of the sign-in check (see
+ *   `sign-in-check.ts`).
  */
 export function testDurationMs(
-  name: 'SHIFTED_TEST_SLEEP_MS' | 'SHIFTED_TEST_READ_INTERVAL_MS'
+  name: 'SHIFTED_TEST_SLEEP_MS' | 'SHIFTED_TEST_READ_INTERVAL_MS' | 'SHIFTED_TEST_SIGN_IN_CHECK_MS'
 ): number | undefined {
   if (!isTestMode()) return undefined
   const value = Number(process.env[name])

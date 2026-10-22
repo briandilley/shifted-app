@@ -23,30 +23,41 @@
 }
 
 /*
- * The part of the top row that the window buttons of Windows and Linux leave free. On
- * macOS, the values fall back to the whole width.
+ * The free space at the right end of the top row: from x 276 (after the folder tabs) to
+ * 16 from the right edge, and inside the part that the window buttons of Windows and
+ * Linux leave free (`titlebar-area-x` and `titlebar-area-width`). Both ends are anchored
+ * with `max()`, so the area never goes past the right edge of the window, also when the
+ * environment values are missing (macOS) or start after x 0. A long address ends with an
+ * ellipsis inside this area.
  */
 .titleArea {
   position: absolute;
   top: 0;
-  left: env(titlebar-area-x, 0px);
+  right: max(16px, calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%) + 16px));
+  left: max(calc(76px + 200px), env(titlebar-area-x, 0px));
   display: flex;
-  width: env(titlebar-area-width, 100%);
+  min-width: 0;
   height: 40px;
   align-items: center;
   justify-content: flex-end;
-  padding: 0 16px 0 calc(76px + 200px);
+  overflow: hidden;
   pointer-events: none;
 }
 
-/* The address of the selected account, after a dot of 8 in the account color. */
+/*
+ * The address of the selected account, after a dot of 8 in the account color. It takes
+ * the mouse, so that its tooltip shows the whole address.
+ */
 .selectedAccount {
   display: flex;
   min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 8px;
   margin: 0;
   color: var(--text);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 
 .dot {

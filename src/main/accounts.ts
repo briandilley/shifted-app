@@ -58,6 +58,7 @@ import type { ScreenPicker } from './screen-picker'
 import { sessionGet } from './session-fetch'
 import { configureAccountSession, type SessionHandlerDeps } from './session-handlers'
 import { adjacentAccountId } from './shortcuts'
+import type { FeedCheck } from './sign-in-check'
 import { SignInWindow } from './sign-in-window'
 import { testDurationMs } from './test-hooks'
 import { bringToFront } from './window-front'
@@ -151,6 +152,11 @@ export class Accounts {
   private readonly downloads = new Downloads(() => this.config.general.askWhereToSave)
   private readonly links: LinkHandlers = {
     showInGoogleApp: (accountId, googleApp, url) => this.showInGoogleApp(accountId, googleApp, url),
+    isSignedIn: (accountId) =>
+      this.findAccount(accountId) !== undefined &&
+      !this.removals.has(accountId) &&
+      this.status.get(accountId) === 'signed-in',
+    checkFeed: (accountId) => this.checkFeed(accountId),
     signedOut: (accountId) => {
       this.setStatus(accountId, 'signed-out')
       this.poller.readNow(accountId)
@@ -416,7 +422,9 @@ export class Accounts {
       onGmailLoaded: (accountId, gmail) => this.gmailLoaded(accountId, gmail),
       onPageProblem: (accountId, googleApp, problem) =>
         this.pageProblem(accountId, googleApp, problem),
-      onPageLoadStarted: (accountId, googleApp) => this.forgetPageProblem(accountId, googleApp)
+      onPageLoadStarted: (accountId, googleApp) => this.forgetPageProblem(accountId, googleApp),
+      onSignInCheckChanged: () => this.publish(),
+      signInCheckLimitMs: testDurationMs('SHIFTED_TEST_SIGN_IN_CHECK_MS')
     })
     this.views = views
     window.on('closed', () => {
@@ -913,6 +921,16 @@ export class Accounts {
     this.updateAccount(accountId, { email: address })
   }
 
+  /**
+   * Read the feed of the account during a sign-in check (see `sign-in-check.ts`): does
+   * Google still see the account signed in?
+   */
+  private async checkFeed(accountId: string): Promise<FeedCheck> {
+    const result = await readFeed(this.feedFetch(accountId), FEED_LABELS['whole-inbox'])
+    if (result.ok) return 'signed-in'
+    return result.error.kind === 'signed-out' ? 'signed-out' : 'unknown'
+  }
+
   /** Read a feed with the session of the account. */
   private feedFetch(accountId: string): FeedFetch {
     const session = this.session(accountId)
@@ -1174,6 +1192,9 @@ export class Accounts {
           const problem = this.pageProblems.get(pageKey(account.id, googleApp))
           return problem ? [[googleApp, problem]] : []
         })
+      ),
+      checkingSignIn: GOOGLE_APPS.filter(
+        (googleApp) => this.views?.isCheckingSignIn(account.id, googleApp) ?? false
       )
     }
   }

@@ -172,6 +172,16 @@ describe('readFeed', () => {
     expect(await readFeed(onward.fetch, '')).toEqual({ ok: false, error: { kind: 'signed-out' } })
   })
 
+  it('reads a feed after redirects that pass through the sign-in page', async () => {
+    // Google sets the cookies of Gmail for a signed-in session this way.
+    const { fetch } = respond(200, fixture('feed-two-entries.xml'), [
+      'https://accounts.google.com/ServiceLogin?service=mail&passive=true',
+      'https://mail.google.com/mail/u/0/feed/atom/'
+    ])
+    const result = await readFeed(fetch, '')
+    expect(result.ok && result.feed.fullcount).toBe(2)
+  })
+
   it('reads a feed after a redirect that does not go to the sign-in page', async () => {
     const { fetch } = respond(200, fixture('feed-empty.xml'), [
       'https://mail.google.com/mail/u/0/feed/atom/?x=1'

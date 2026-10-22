@@ -167,7 +167,8 @@ describe('the badges', () => {
       unreadCountSource: 'automatic',
       unreadFeed: 'primary',
       automaticFeedLearned: false,
-      pageProblems: {}
+      pageProblems: {},
+      checkingSignIn: []
     }
   }
 
