@@ -12,8 +12,9 @@ At the end of this phase, you can add one account. You sign in to Google in a si
 2. `docs/spec/PRODUCT.md`, sections "Supported accounts", "Accounts and sessions", "Sign-in", and "Links" (rule 3).
 3. `docs/spec/docs/adr/0002-isolated-session-per-account.md`
 4. `docs/spec/docs/adr/0004-honest-user-agent-for-sign-in.md`
-5. `docs/spec/DESIGN.md`, sections "The other windows" and "How to build it in Electron".
-6. `docs/spec/GLOSSARY.md`
+5. `docs/spec/docs/adr/0006-detect-sign-out-with-the-feed.md`
+6. `docs/spec/DESIGN.md`, sections "The other windows" and "How to build it in Electron".
+7. `docs/spec/GLOSSARY.md`
 
 ## Scope
 
@@ -56,9 +57,18 @@ At the end of this phase, you can add one account. You sign in to Google in a si
 
 ### 5. The signed-out state
 
-1. If the Gmail view of an account tries to go to `accounts.google.com`, stop the navigation. Do not show Google's sign-in page in the main window.
-2. In its place, show a React panel: "This account is signed out." and a "Sign in again" button.
-3. The button opens the sign-in window for the same account and the same session.
+A signed-in Gmail also passes through `accounts.google.com`, for example to set its cookies after a sign-in. So a visit to `accounts.google.com` alone does not prove a sign-out. The feed decides. See `docs/spec/docs/adr/0006-detect-sign-out-with-the-feed.md`.
+
+1. Let a main-frame HTTP redirect that only passes through `accounts.google.com` go on.
+2. Before the Gmail view shows a page of `accounts.google.com`, hide the Gmail view. Never show Google's sign-in page in the main window.
+3. When the view is back on a Gmail page, show it again. Do not read the feed while the view only passes through `accounts.google.com`. During those redirects, the feed of a signed-in account can answer HTTP 401, because Gmail does not have its cookies yet.
+4. If the view stops on a page of `accounts.google.com` and is still there 3 seconds later, read the Atom feed of the whole inbox with the session of the account.
+   - If the feed answers HTTP 401 or 403, or its redirects pass through `accounts.google.com` and do not end with a feed, stop the page and show the signed-out panel.
+   - If the feed works, wait while the view stays hidden.
+5. If the view is still on `accounts.google.com` after 15 seconds, load Gmail again once from its start URL. If it comes back to `accounts.google.com`, show the signed-out panel. Never load it again in a loop.
+6. The signed-out panel is a React panel: "This account is signed out." and a "Sign in again" button.
+7. The button opens the sign-in window for the same account and the same session.
+8. When a navigation causes the signed-out panel, write the host and the path of the page to the log of the main process. Never write the query string or a cookie.
 
 ### 6. Restart
 
@@ -70,6 +80,7 @@ At the end of this phase, you can add one account. You sign in to Google in a si
 1. Add a temporary "Remove account" button. Prompt 02 moves it into the context menu.
 2. Ask the person to confirm.
 3. Close the views of the account. Call `clearStorageData()` on its session. Delete the partition folder of the session from disk. Remove the account from the configuration.
+4. On Windows, Chromium keeps files of the partition folder open while Shifted runs, and Windows cannot delete an open file. Electron has no call that closes a session. If the delete fails on Windows, remove the account from the configuration at once. Write the folder to a list in the user data folder. When Shifted starts, delete each folder on that list before any session opens it.
 
 ### 8. The fake Google test server
 
@@ -77,6 +88,7 @@ Add to `test/fake-google/`:
 
 - A sign-in flow that sets a session cookie for the fake host and goes to `/gmail/`.
 - If the cookie is missing, `/gmail/` returns a redirect to `/signin`. A test uses this for the signed-out state.
+- A cookie hop for a signed-in session: a control switch makes `/gmail/` redirect to `/signin`, and `/signin` sends a signed-in session straight back to `/gmail/`. A second form of the hop shows a page on `/signin` that goes back to `/gmail/` by a script.
 - A control route that clears the cookie of the fake host, so that a test can sign an account out.
 
 ## Out of scope
@@ -93,13 +105,16 @@ Add to `test/fake-google/`:
 - End-to-end: add an account, sign in on the fake sign-in page, the sign-in window closes, and the main window shows the fake Gmail.
 - End-to-end: restart Shifted with the same user data folder. The account shows the fake Gmail with no sign-in.
 - End-to-end: clear the fake cookie. The main window shows "This account is signed out." "Sign in again" opens the sign-in window.
-- End-to-end: remove the account. Its partition folder no longer exists.
+- End-to-end: turn on each form of the cookie hop for a signed-in account. The main window keeps the fake Gmail. It never shows the signed-out panel or the fake sign-in page.
+- Unit: the sign-out decision of section 5 gives "signed out" only when the view stops on the sign-in host and the feed says signed out, or when the view stays on the sign-in host after the one new load. It reads no feed while the view only passes through the sign-in host.
+- Unit: a feed answer at the end of redirects through the sign-in host counts as signed in.
+- End-to-end: remove the account. Its partition folder no longer exists. On Windows, the folder no longer exists after Shifted starts again.
 
 ## Manual tests
 
 1. Run `npm run dev`. Click "Add account". The sign-in window opens with the top line.
 2. Sign in with a personal Gmail account. If Google asks for a passkey on macOS or Linux, click "Try another way" and use your password and 2-Step Verification.
-3. Make sure that the sign-in window closes and that Gmail shows in the main window.
+3. Make sure that the sign-in window closes and that Gmail shows in the main window. Make sure that "This account is signed out." does not show.
 4. Quit Shifted and start it again. Make sure that Gmail shows with no sign-in.
 5. Remove the account. Add a Google Workspace account. Make sure that it signs in.
 6. If you have a Workspace account that uses a company sign-in page, add it too. Make sure that the company page shows in the sign-in window.

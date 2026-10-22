@@ -96,6 +96,7 @@ All sizes are in points.
 - The active tab has the `--surface` fill and the `--text` color, so it joins the content area.
 - An inactive tab has no fill and the `--text-secondary` color.
 - The right end of the top row shows the address of the selected account in `--text`. A dot of 8 in the account color comes before it.
+- The address never goes past the right edge of the window. If it is too long for the free space of the top row, it ends with "…", and its tooltip shows the full address.
 
 ### Badges and buttons
 

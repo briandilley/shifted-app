@@ -61,6 +61,7 @@ Example: you add `name@company.com`. Google sends you to `company.okta.com` to s
 - While the sign-in window is open, the content area of the account says that sign-in is in progress.
 - When Gmail loads in the sign-in window, Shifted closes the sign-in window and shows Gmail of that account in the main window.
 - If Google signs an account out, the content area of that account says so. It also shows a "Sign in again" button. The button opens the sign-in window for that account. Shifted never shows Google's sign-in page in the content area.
+- The feed of the account decides if the account is signed out. A signed-in Gmail can pass through Google's sign-in host to set its cookies, and that visit alone is not a sign-out. See `docs/adr/0006-detect-sign-out-with-the-feed.md`.
 - Shifted never pretends to be another browser. See `docs/adr/0004-honest-user-agent-for-sign-in.md`.
 - On macOS and Linux, passkeys do not work in Shifted. When Google asks for a passkey, you click "Try another way" and use your password and 2-Step Verification. The top line of the sign-in window tells you this.
 - On Windows, Google's passkey request goes to Windows Hello, which shows its own dialog.
