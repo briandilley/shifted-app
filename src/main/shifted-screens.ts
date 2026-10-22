@@ -5,6 +5,7 @@
 import type { WebContents, WebPreferences } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { applyPageMenu } from './page-menu'
 import { CrashCounter, isCrash } from './page-problems'
 
 /** The web preferences of every screen of Shifted. */
@@ -23,7 +24,8 @@ const screenCrashes = new CrashCounter()
 
 /**
  * The screens of Shifted open no windows and never navigate away from their own page. A
- * screen that crashed reloads on its own, at most 2 times in 5 minutes.
+ * screen that crashed reloads on its own, at most 2 times in 5 minutes. A right-click in a
+ * text field shows the edit commands, for example Paste in the text box of the import.
  */
 export function lockShiftedScreen(contents: WebContents): void {
   contents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -36,6 +38,7 @@ export function lockShiftedScreen(contents: WebContents): void {
     if (screenCrashes.record(key) === 'reload') contents.reload()
   })
   contents.once('destroyed', () => screenCrashes.forget(key))
+  applyPageMenu(contents, 'shifted-screen')
 }
 
 /**

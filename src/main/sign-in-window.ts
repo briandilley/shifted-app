@@ -12,6 +12,7 @@ import { googlePageWebPreferences } from './account-session'
 import { showCertificateErrors } from './certificate-errors'
 import { signInUrl } from './google-urls'
 import { routeNavigation } from './link-rules'
+import { applyPageMenu } from './page-menu'
 import { CrashCounter, isCrash } from './page-problems'
 import { isSignInFinished } from './sign-in'
 import {
@@ -91,6 +92,8 @@ export class SignInWindow {
       else this.close()
     })
     showCertificateErrors(page)
+    // The context menu has the edit commands, for example Paste in the password field.
+    applyPageMenu(page, 'sign-in')
 
     page.on('did-navigate', (_event, url) => {
       if (this.finished || !isSignInFinished(url)) return

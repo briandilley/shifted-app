@@ -6,6 +6,7 @@ import { BrowserWindow, type BrowserWindowConstructorOptions, type WebContents }
 import icon from '../../resources/icon.png?asset'
 import { accountSession, googlePageWebPreferences } from './account-session'
 import { showCertificateErrors } from './certificate-errors'
+import { applyPageMenu } from './page-menu'
 import { isCrash } from './page-problems'
 
 /** The title of a child window: "Shifted: " and the name of the account. */
@@ -49,6 +50,7 @@ export class ChildWindows {
       if (isCrash(details.reason) && !window.isDestroyed()) window.destroy()
     })
     showCertificateErrors(window.webContents)
+    applyPageMenu(window.webContents, 'child-window')
     window.on('closed', () => {
       accountWindows.delete(window)
       if (accountWindows.size === 0 && this.windows.get(accountId) === accountWindows) {

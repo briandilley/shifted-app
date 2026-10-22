@@ -11,6 +11,7 @@ import { GOOGLE_APPS, type GoogleApp, type PageProblem, type ViewBounds } from '
 import { accountSession, googlePageWebPreferences } from './account-session'
 import { calendarUrl, gmailUrl, isGmailUrl } from './google-urls'
 import { applyLinkRules, type LinkHandlers } from './link-handlers'
+import { applyPageMenu } from './page-menu'
 import { isCertificateError, isConnectionError, isCrash } from './page-problems'
 import { GOOGLE_VIEW_RADIUS } from './window-frame'
 
@@ -233,6 +234,8 @@ export class AccountViews {
       },
       this.handlers.signInCheckLimitMs
     )
+    // A right-click shows the context menu: links, images, text, and spelling.
+    applyPageMenu(page, googleApp)
 
     // A page that stopped: the content area shows "This page stopped." or the certificate
     // message in its place. See "Failure states" in `docs/spec/PRODUCT.md`.

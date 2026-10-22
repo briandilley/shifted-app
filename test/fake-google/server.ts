@@ -387,8 +387,17 @@ export const MAILTO_LINK = 'mailto:friend@example.com?subject=Hello'
 /** The path of the fake Calendar event that the fake Gmail page links to. */
 export const CALENDAR_EVENT_PATH = '/calendar/event?eid=fake-event'
 
-/** The script of the fake Gmail page: the pop-out and the microphone button. */
+/** A link of the fake Gmail page that shows its own context menu, like the message list. */
+export const OWN_MENU_LINK = 'https://example.com/own-menu'
+
+/**
+ * The script of the fake Gmail page: the pop-out, the microphone button, and the link with
+ * its own context menu.
+ */
 const FAKE_GMAIL_SCRIPT = `
+document.getElementById('own-menu-link').addEventListener('contextmenu', (event) => {
+  event.preventDefault()
+})
 document.getElementById('pop-out').addEventListener('click', () => {
   const popOut = window.open('about:blank', '_blank', 'width=520,height=480')
   if (!popOut) return
@@ -445,6 +454,8 @@ function fakeGmailLinks(url: URL): string {
       <a id="outside-link" href="${OUTSIDE_LINK}">Outside document</a>
       <a id="outside-new-window-link" href="${OUTSIDE_NEW_WINDOW_LINK}" target="_blank">Outside page in a new window</a>
       <a id="mailto-link" href="${escapeHtml(MAILTO_LINK)}">Write to a friend</a>
+      <a id="own-menu-link" href="${OWN_MENU_LINK}">Message with its own menu</a>
+      <input id="search" aria-label="Search mail" />
       <button id="microphone" type="button">Use the microphone</button>
       <span id="microphone-status"></span>
       <a id="download-link" href="${FAKE_DOWNLOAD_PATH}">Download the report</a>
