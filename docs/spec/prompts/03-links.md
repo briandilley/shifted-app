@@ -4,12 +4,12 @@ You are a coding agent. You continue the build of Shifted in this repo. Read `AG
 
 ## Goal
 
-At the end of this phase, every link and every new window from Gmail or Calendar goes to the right place. Pages ask for permissions only as the spec allows, and downloads go to the Downloads folder.
+At the end of this phase, every link and every new window from Gmail or Calendar goes to the right place. Pages ask for permissions only as the spec allows, and downloads go to the Downloads folder. A right-click shows a context menu.
 
 ## Read first
 
 1. `AGENTS.md`
-2. `docs/spec/PRODUCT.md`, sections "Links", "Page permissions", and "Downloads".
+2. `docs/spec/PRODUCT.md`, sections "Links", "Context menu of a page", "Page permissions", and "Downloads".
 3. `docs/spec/BUILD.md`, section "Security".
 4. `docs/spec/GLOSSARY.md`
 
@@ -66,12 +66,23 @@ At the end of this phase, every link and every new window from Gmail or Calendar
 3. When the download finishes, show a notification. A click on it calls `shell.showItemInFolder`.
 4. Add the switch "Ask where to save each file" to the General page of the configuration window. It is off by default. If it is on, show a save dialog for each download.
 
-### 7. A test hook for the default browser
+### 7. The context menu
+
+Electron shows no context menu of its own. Without this section, a right-click in Gmail does nothing.
+
+1. Write a pure function in `src/main/page-menu-items.ts` that makes the items of the menu. Its input is the values of the `context-menu` event and the source of the page. The sources are those of `routeNavigation`, and the screens of Shifted.
+2. Follow "Context menu of a page" in `PRODUCT.md`. To decide if a link gets "Open link in browser", call `routeNavigation` with the kind "new window".
+3. Put a separator between the groups: spelling, link, image, and the edit commands. Turn off each edit command that `editFlags` of the event does not allow.
+4. Handle `context-menu` on the Gmail view, the Calendar view, each child window, the sign-in page, and each screen of Shifted. If the function returns no items, show no menu.
+5. Show the menu with `Menu.popup` in the window of the page.
+6. For "Open link in browser", use the same function as the `default-browser` result, so that the test hook of section 8 records it. For "Save image", call `webContents.downloadURL`, so that the rules of section 6 apply.
+
+### 8. A test hook for the default browser
 
 1. In test mode (`SHIFTED_TEST_SERVER` is set), do not call `shell.openExternal`. Record the URL in a list that the end-to-end tests can read.
 2. Do the same for `shell.showItemInFolder`.
 
-### 8. The fake Google test server
+### 9. The fake Google test server
 
 Add fake pages that:
 
@@ -81,6 +92,8 @@ Add fake pages that:
 - Contain a `mailto:` link.
 - Ask for the microphone with `getUserMedia`.
 - Offer a file download.
+- Contain a text field.
+- Contain a link whose page stops the `contextmenu` event, as the message list of Gmail does.
 
 ## Out of scope
 
@@ -96,6 +109,8 @@ Add fake pages that:
 - End-to-end: a fake Calendar link selects the Calendar tab. No new window opens.
 - End-to-end: an outside link is recorded for the default browser and does not load in Shifted.
 - End-to-end: a fake download lands in a temporary Downloads folder.
+- Unit: the context menu items for a link, a `mailto:` link, an image, selected text, a text field, and a misspelled word, for each source.
+- End-to-end: right-click the fake outside link. The menu has "Open link in browser", and its click is recorded for the default browser. Right-click the fake text field. The menu has the edit commands. Right-click the link that stops the `contextmenu` event. Shifted shows no menu.
 
 ## Manual tests
 
@@ -105,6 +120,10 @@ Add fake pages that:
 4. Click a Calendar invitation link in Gmail. Make sure that Shifted shows the Calendar tab of the same account.
 5. Download an attachment. Make sure that it is in your Downloads folder and that the notification shows it in the folder.
 6. Start a Google Chat huddle in Gmail. Make sure that Shifted asks once for the microphone.
+7. Right-click a link in a message. Make sure that "Open link in browser" opens it in your default browser, and that "Copy link address" copies it.
+8. In a new message, type a misspelled word and right-click it. Make sure that the menu shows suggestions and that a click on one replaces the word. Make sure that Paste works.
+9. Right-click an image in a message. Make sure that "Save image" puts it in your Downloads folder.
+10. Right-click a message in the message list. Make sure that Gmail's own menu shows, and not the menu of Shifted.
 
 ## When you finish
 

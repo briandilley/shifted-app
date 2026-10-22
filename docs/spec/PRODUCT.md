@@ -118,6 +118,23 @@ Shifted decides where each link opens. The rules apply to links that you click a
 
 Rule 5 has a known cost. Example: you click a Google Docs link in account B. The link opens in your default browser, which can be signed in as account A. Shifted accepts this cost, because it is not a web browser.
 
+## Context menu of a page
+
+A right-click in a Google app, a child window, or the sign-in window shows a native context menu. The menu shows only the items that fit the place of the click:
+
+- On a link: "Open link in browser" and "Copy link address". "Open link in browser" shows only for a link that rule 5 of "Links" sends to the default browser. A click on a Gmail or Calendar link opens it in Shifted.
+- On a `mailto:` link: "Copy email address".
+- On an image: "Copy image", "Copy image address", and "Save image". "Save image" saves the image as a download.
+- On selected text: "Copy". On macOS, also "Look up".
+- In a text field: Undo, Redo, Cut, Copy, Paste, "Paste and match style", and "Select all". On a misspelled word, the spelling suggestions and "Add to dictionary" come first.
+
+Rules:
+
+- A place with none of these items shows no menu.
+- A Google page can show its own context menu, for example the message list of Gmail. Then Shifted shows no menu of its own.
+- The sign-in window has no image items. Its links never leave the sign-in window, so a link there has only "Copy link address".
+- A text field in a screen of Shifted shows the text field items. Example: the box for the pasted text of `Import configuration…`.
+
 ## Unread badges
 
 - Each account in the sidebar shows its unread count on its avatar. If the count is 0, Shifted shows no badge.
