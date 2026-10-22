@@ -9,6 +9,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { TEST_HOOKS_ARGUMENT } from '../shared/test-hooks'
 import { isTestMode, spellCheckDictionaryUrl } from './google-urls'
+import { deleteSessionFolderAtNextStart, isFileInUse } from './session-folders'
 import { applySpellCheckLanguages } from './spell-check'
 
 const configuredSessions = new WeakSet<Session>()
@@ -91,12 +92,25 @@ export async function clearAccountSession(accountId: string): Promise<void> {
 /**
  * Delete the session of an account: clear its storage data, then delete its partition
  * folder from disk. Close every view of the account first.
+ *
+ * On Windows, Chromium keeps some files of the session open while Shifted runs, and
+ * Windows does not delete an open file. Then Shifted deletes the folder at its next start
+ * (`session-folders.ts`). The storage data is still cleared at once.
  */
 export async function deleteAccountSession(accountId: string): Promise<void> {
   const accountSession = session.fromPartition(partitionName(accountId))
   const folder = accountSession.storagePath
   await accountSession.clearStorageData()
-  if (folder) {
+  if (!folder) return
+  if (process.platform !== 'win32') {
     await rm(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    return
+  }
+  try {
+    // No retries: the open files stay open until Shifted quits.
+    await rm(folder, { recursive: true, force: true })
+  } catch (error) {
+    if (!isFileInUse(error)) throw error
+    deleteSessionFolderAtNextStart(app.getPath('userData'), folder)
   }
 }

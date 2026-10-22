@@ -29,6 +29,7 @@ import {
   lockShiftedScreen,
   shiftedScreenWebPreferences
 } from './shifted-screens'
+import { deleteLeftoverSessionFolders } from './session-folders'
 import { isTrayAvailable, ShiftedTray } from './tray'
 import { testRecords } from './test-hooks'
 import { appBadgeTotal } from './unread-counts'
@@ -222,6 +223,9 @@ function startShifted(): void {
   })
 
   const userData = app.getPath('userData')
+  // Delete the folders of removed sessions that Windows kept open during the last run,
+  // before any session opens.
+  deleteLeftoverSessionFolders(userData)
   const screenPicker = new ScreenPicker()
   const accounts = new Accounts(
     new ConfigStore(userData),

@@ -6,6 +6,7 @@ import {
   chooseFromAccountMenu,
   expect,
   expectFakeGmail,
+  expectSessionFolderDeleted,
   findPage,
   launchShifted,
   mainWindowPage,
@@ -124,9 +125,9 @@ test('remove the account: Shifted asks to confirm, then deletes its partition fo
   await chooseFromAccountMenu(shifted, account, 'Remove')
   await expect(mainWindow.getByText('No accounts yet')).toBeVisible()
   await expect(account).toHaveCount(0)
-  await expect.poll(() => existsSync(folder ?? '')).toBe(false)
   expect(readConfig(userDataDir).accounts).toEqual([])
   await expect.poll(() => visibleMainWindowPages(shifted)).toEqual([])
+  await expectSessionFolderDeleted(shifted, fakeGoogle, userDataDir, folder ?? '')
 })
 
 test('closing the sign-in window of a new account removes the account', async ({
@@ -149,5 +150,5 @@ test('closing the sign-in window of a new account removes the account', async ({
 
   await expect(mainWindow.getByText('No accounts yet')).toBeVisible()
   await expect.poll(() => readConfig(userDataDir).accounts).toEqual([])
-  await expect.poll(() => existsSync(folder ?? '')).toBe(false)
+  await expectSessionFolderDeleted(shifted, fakeGoogle, userDataDir, folder ?? '')
 })

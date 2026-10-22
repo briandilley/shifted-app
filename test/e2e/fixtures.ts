@@ -7,7 +7,7 @@ import {
   type Page
 } from '@playwright/test'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -327,6 +327,37 @@ export async function addAccountAndSignIn(
   await expectFakeGmail(app, fakeGoogle, email)
   // Shifted reads the address from the feed and shows it in the sidebar.
   await expect(sidebarAccount(mainWindow, email ?? FAKE_ADDRESS)).toBeVisible()
+}
+
+/**
+ * Wait until the folder of the session of a removed account is gone from disk. Call it
+ * last in a test, because on Windows it quits Shifted.
+ *
+ * On Windows, Chromium keeps some files of the session open while Shifted runs, and
+ * Windows does not delete an open file. So Shifted deletes the folder at its next start,
+ * before any session opens (`src/main/session-folders.ts`). There, the test quits
+ * Shifted, starts it again, and then checks. On macOS and Linux, the folder is gone at
+ * once.
+ */
+export async function expectSessionFolderDeleted(
+  app: ElectronApplication,
+  fakeGoogle: FakeGoogleServer,
+  userDataDir: string,
+  folder: string
+): Promise<void> {
+  expect(folder).toBeTruthy()
+  if (process.platform !== 'win32') {
+    await expect.poll(() => existsSync(folder)).toBe(false)
+    return
+  }
+  await app.close()
+  const again = await launchShifted(fakeGoogle, userDataDir)
+  try {
+    await mainWindowPage(again)
+    expect(existsSync(folder)).toBe(false)
+  } finally {
+    await again.close()
+  }
 }
 
 /** Make the confirmation dialog of "Remove" answer with this button. */

@@ -14,6 +14,7 @@ import {
   configEmails,
   evaluateInContentArea,
   expect,
+  expectSessionFolderDeleted,
   findPage,
   gmailViewPage,
   openSettingsFromAppMenu,
@@ -209,7 +210,7 @@ test('the account page signs out and removes, and the session is in the app data
   await settings.getByRole('button', { name: 'Remove', exact: true }).click()
   await expect(sidebarAccount(mainWindow, ONE)).toHaveCount(0)
   await expect.poll(() => configEmails(userDataDir)).toEqual([TWO])
-  await expect.poll(() => existsSync(folder ?? '')).toBe(false)
+  await expectSessionFolderDeleted(shifted, fakeGoogle, userDataDir, folder ?? '')
 })
 
 test.describe('with short test timers', () => {
