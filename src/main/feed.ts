@@ -177,6 +177,11 @@ export async function readFeed(fetch: FeedFetch, label: string): Promise<FeedRes
   } catch {
     return { ok: false, error: { kind: 'network' } }
   }
+  // A signed-in session can also pass through the sign-in host, for example when Google
+  // sets the cookies of Gmail. So a feed at the end of the redirects means signed in.
+  // See "Fix after the first real sign-in" in docs/decisions.md.
+  const feed = response.status === 200 ? parseFeed(body) : undefined
+  if (feed) return { ok: true, feed }
   if (
     response.redirects.some(isSignInPageUrl) ||
     response.status === 401 ||
@@ -187,8 +192,7 @@ export async function readFeed(fetch: FeedFetch, label: string): Promise<FeedRes
   if (response.status !== 200) {
     return { ok: false, error: { kind: 'http', status: response.status } }
   }
-  const feed = parseFeed(body)
-  return feed ? { ok: true, feed } : { ok: false, error: { kind: 'parse' } }
+  return { ok: false, error: { kind: 'parse' } }
 }
 
 /** The reason that the tooltip of the warning mark shows. */

@@ -23,6 +23,13 @@ export interface AccountViewHandlers {
   onPageProblem(accountId: string, googleApp: GoogleApp, problem: PageProblem): void
   /** A Google app starts to load a new page, for example after "Reload". */
   onPageLoadStarted(accountId: string, googleApp: GoogleApp): void
+  /**
+   * The page of a Google app was hidden for a sign-in check, or shows again (see
+   * `sign-in-check.ts`).
+   */
+  onSignInCheckChanged(accountId: string, googleApp: GoogleApp): void
+  /** The time limit of the sign-in check, or `undefined` for the default. */
+  signInCheckLimitMs?: number
 }
 
 /** The Google app that the content area shows: one Google app of one account. */
@@ -46,6 +53,11 @@ export class AccountViews {
   private shown: ShownGoogleApp | null = null
   /** The views whose last page did not load, because the network did not answer. */
   private readonly failedLoads = new Set<WebContentsView>()
+  /**
+   * The views that are hidden during a sign-in check, because their page went to Google's
+   * sign-in host. The content area shows a loading panel in their place.
+   */
+  private readonly signInChecks = new Set<WebContentsView>()
 
   constructor(
     private readonly window: BrowserWindow,
@@ -55,6 +67,12 @@ export class AccountViews {
   /** The view of a Google app of an account, if Shifted made it. */
   get(accountId: string, googleApp: GoogleApp): WebContentsView | undefined {
     return this.views.get(accountId)?.get(googleApp)
+  }
+
+  /** True while the view of the Google app is hidden for a sign-in check. */
+  isCheckingSignIn(accountId: string, googleApp: GoogleApp): boolean {
+    const view = this.get(accountId, googleApp)
+    return view !== undefined && this.signInChecks.has(view)
   }
 
   /** The account and the Google app of a view, by its web contents, or `undefined`. */
@@ -175,7 +193,8 @@ export class AccountViews {
         const visible =
           this.shown !== null &&
           this.shown.accountId === accountId &&
-          this.shown.googleApp === googleApp
+          this.shown.googleApp === googleApp &&
+          !this.signInChecks.has(view)
         view.setBounds(this.bounds)
         view.setVisible(visible)
       }
@@ -190,9 +209,30 @@ export class AccountViews {
     view.setBorderRadius(GOOGLE_VIEW_RADIUS)
     const page = view.webContents
 
-    // The link rules decide where each link and each new window goes. They also stop
-    // Google's sign-in page, which never shows in the content area.
-    applyLinkRules(page, accountId, googleApp, this.handlers.links)
+    // The link rules decide where each link and each new window goes. They also hide
+    // the view while its page is on Google's sign-in host, so that Google's sign-in page
+    // never shows in the content area.
+    const setSignInCheck = (checking: boolean): void => {
+      if (checking === this.signInChecks.has(view)) return
+      if (checking) this.signInChecks.add(view)
+      else this.signInChecks.delete(view)
+      this.update()
+      this.handlers.onSignInCheckChanged(accountId, googleApp)
+    }
+    applyLinkRules(
+      page,
+      accountId,
+      googleApp,
+      this.handlers.links,
+      {
+        hide: () => setSignInCheck(true),
+        show: () => setSignInCheck(false),
+        restart: () => {
+          page.loadURL(googleAppUrl(googleApp)).catch(ignore)
+        }
+      },
+      this.handlers.signInCheckLimitMs
+    )
 
     // A page that stopped: the content area shows "This page stopped." or the certificate
     // message in its place. See "Failure states" in `docs/spec/PRODUCT.md`.
@@ -229,6 +269,7 @@ export class AccountViews {
 
   private closeView(view: WebContentsView): void {
     this.failedLoads.delete(view)
+    this.signInChecks.delete(view)
     if (!this.window.isDestroyed()) this.window.contentView.removeChildView(view)
     if (!view.webContents.isDestroyed()) view.webContents.close()
   }

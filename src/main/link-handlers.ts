@@ -8,6 +8,13 @@ import type { GoogleApp } from '../shared/api'
 import { openInDefaultBrowser } from './external'
 import { gmailComposeUrl, isSignInPageUrl } from './google-urls'
 import { linkTarget, routeNavigation, type NavigationResult } from './link-rules'
+import {
+  SignInCheck,
+  signInPageForLog,
+  type CheckedPage,
+  type FeedCheck,
+  type SignInPageStep
+} from './sign-in-check'
 
 /** The sources of the link rules that belong to an account. */
 export type AccountLinkSource = 'gmail' | 'calendar' | 'child-window'
@@ -15,7 +22,11 @@ export type AccountLinkSource = 'gmail' | 'calendar' | 'child-window'
 export interface LinkHandlers {
   /** Select the account, show this Google app, and load the URL in its view. */
   showInGoogleApp(accountId: string, googleApp: GoogleApp, url: string): void
-  /** A page of the account tried to go to Google's sign-in page. */
+  /** True when the account is signed in. Only then does a page of it show. */
+  isSignedIn(accountId: string): boolean
+  /** Read the feed of the account, to learn whether Google signed it out. */
+  checkFeed(accountId: string): Promise<FeedCheck>
+  /** Google signed the account out: a page of it went to Google's sign-in page. */
   signedOut(accountId: string): void
   /** The options of a new child window of the account. */
   childWindowOptions(accountId: string): BrowserWindowConstructorOptions
@@ -62,33 +73,135 @@ function followLink(
 }
 
 /**
+ * How a page of an account hides and starts again during a sign-in check. The Gmail and
+ * Calendar views give their own. A child window hides its window, and closes in place
+ * of a restart.
+ */
+export interface PageControl {
+  hide(): void
+  show(): void
+  /** Load the first page of the Google app again. */
+  restart(): void
+}
+
+/** The control of a child window: hide and show the window. A restart closes it. */
+function childWindowControl(page: WebContents): PageControl {
+  const window = (): BrowserWindow | null => {
+    if (page.isDestroyed()) return null
+    const found = BrowserWindow.fromWebContents(page)
+    return found && !found.isDestroyed() ? found : null
+  }
+  return {
+    hide: () => window()?.hide(),
+    show: () => window()?.show(),
+    restart: () => window()?.close()
+  }
+}
+
+/**
+ * Watch the page for trips to Google's sign-in page (see `sign-in-check.ts`). Shifted
+ * never shows Google's sign-in page in a Google app or a child window, but a trip there
+ * is a sign-out only if the feed or the time limit says so.
+ *
+ * @returns A function that tells whether a URL that the page goes to is on the sign-in
+ *   host, and handles it.
+ */
+function watchSignInPage(
+  page: WebContents,
+  accountId: string,
+  source: AccountLinkSource,
+  handlers: LinkHandlers,
+  control: PageControl,
+  limitMs: number | undefined
+): (event: Electron.Event | null, step: SignInPageStep, url: string) => boolean {
+  const checkedPage: CheckedPage = {
+    hide: () => control.hide(),
+    show: () => control.show(),
+    url: () => (page.isDestroyed() ? '' : page.getURL()),
+    restart: () => {
+      if (!page.isDestroyed()) control.restart()
+    },
+    stop: async () => {
+      if (page.isDestroyed()) return
+      // Stop the page, also a redirect that is still on its way, and leave no Google
+      // sign-in page in the hidden page. "Sign in again" loads the Google app again.
+      page.stop()
+      await page.loadURL('about:blank').catch(ignore)
+    }
+  }
+  const check = new SignInCheck({
+    page: checkedPage,
+    isSignInPageUrl,
+    readFeed: () => handlers.checkFeed(accountId),
+    signedOut: (url) => {
+      // One line for a later report: which Google page caused the sign-out. No query
+      // string and no cookies.
+      console.warn(
+        `Shifted found account ${accountId} signed out: its ${source} page went to ${signInPageForLog(url)}`
+      )
+      handlers.signedOut(accountId)
+    },
+    limitMs
+  })
+  page.once('destroyed', () => check.close())
+
+  page.on('did-start-navigation', (details) => {
+    if (!details.isMainFrame || details.isSameDocument) return
+    if (isSignInPageUrl(details.url) && handlers.isSignedIn(accountId)) {
+      check.signInPage('start', details.url)
+    }
+  })
+  page.on('did-navigate', (_event, url) => {
+    if (!isSignInPageUrl(url)) check.pageCommitted()
+    else if (handlers.isSignedIn(accountId)) check.signInPage('commit', url)
+    // The account is not signed in, so its pages do not show. Leave no sign-in page there.
+    else page.loadURL('about:blank').catch(ignore)
+  })
+
+  return (event, step, url) => {
+    if (!isSignInPageUrl(url)) return false
+    if (handlers.isSignedIn(accountId)) {
+      check.signInPage(step, url)
+    } else {
+      // The account is not signed in, so its pages do not show. They need no sign-in page.
+      event?.preventDefault()
+    }
+    return true
+  }
+}
+
+function ignore(): void {
+  // A load that Shifted stopped, or a page that closed. Nothing to do.
+}
+
+/**
  * Apply the link rules to the `will-navigate` and `setWindowOpenHandler` handlers of a
  * page of an account. A child window that the page opens gets the same rules.
+ *
+ * @param control How the page hides during a sign-in check. A child window has its own.
+ * @param signInCheckLimitMs The time limit of the sign-in check. Tests make it shorter.
  */
 export function applyLinkRules(
   page: WebContents,
   accountId: string,
   source: AccountLinkSource,
-  handlers: LinkHandlers
+  handlers: LinkHandlers,
+  control: PageControl = childWindowControl(page),
+  signInCheckLimitMs?: number
 ): void {
-  // Shifted never shows Google's sign-in page in a Google app or a child window. If a page
-  // goes there, Google signed the account out. Gmail sends a signed-out session there
-  // with an HTTP redirect, so Shifted also checks redirects.
-  const stopSignInPage = (event: Electron.Event, url: string, isMainFrame: boolean): boolean => {
-    if (!isMainFrame || !isSignInPageUrl(url)) return false
-    event.preventDefault()
-    handlers.signedOut(accountId)
-    return true
-  }
+  const signInPage = watchSignInPage(page, accountId, source, handlers, control, signInCheckLimitMs)
 
+  // A redirect can pass through the sign-in host, for example when Google sets the cookies
+  // of Gmail. Shifted lets it go on, and hides the page during the check.
   page.on('will-redirect', (event) => {
-    stopSignInPage(event, event.url, event.isMainFrame)
+    if (event.isMainFrame) signInPage(event, 'redirect', event.url)
   })
 
   page.on('will-navigate', (event) => {
     // Frames inside a Google page, for example Google Chat in Gmail, load freely.
     if (!event.isMainFrame) return
-    if (stopSignInPage(event, event.url, true)) return
+    // A navigation to the sign-in host stays in the page, which is hidden during the check.
+    if (signInPage(event, 'start', event.url)) return
     const result = routeNavigation(event.url, { source, kind: 'navigation' })
     if (result === 'stay') return
     event.preventDefault()
@@ -112,7 +225,14 @@ export function applyLinkRules(
   })
 
   page.on('did-create-window', (window, details) => {
-    applyLinkRules(window.webContents, accountId, 'child-window', handlers)
+    applyLinkRules(
+      window.webContents,
+      accountId,
+      'child-window',
+      handlers,
+      childWindowControl(window.webContents),
+      signInCheckLimitMs
+    )
     handlers.childWindowCreated(accountId, window, details.url)
   })
 }

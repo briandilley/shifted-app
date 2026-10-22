@@ -263,6 +263,12 @@ export interface AccountState {
   quietHours: QuietHours
   /** The Google apps of the account whose page stopped, and why. */
   pageProblems: Partial<Record<GoogleApp, PageProblem>>
+  /**
+   * The Google apps of the account whose page went to Google's sign-in host. Shifted
+   * hides the page while it checks whether Google signed the account out. The content
+   * area shows "Loading…" in its place.
+   */
+  checkingSignIn: GoogleApp[]
 }
 
 /** The state that the screens of Shifted show. */

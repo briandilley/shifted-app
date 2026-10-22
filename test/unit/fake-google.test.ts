@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   CALENDAR_EVENT_PATH,
+  FAKE_COOKIE_CHECK_PATH,
   FAKE_DOWNLOAD_CONTENT,
   FAKE_DOWNLOAD_NAME,
   FAKE_DOWNLOAD_PATH,
@@ -121,6 +122,51 @@ describe('the fake Google test server', () => {
         await (await fetch(`${fakeGoogle.url}/avatar.png`, { headers: { cookie } })).arrayBuffer()
       )
     expect((await avatarOf(first)).equals(await avatarOf(second))).toBe(false)
+  })
+
+  it('imitates the cookie hop of a signed-in session through the sign-in path', async () => {
+    const headers = { cookie: await signIn(fakeGoogle) }
+    const before = fakeGoogle.state.signInHops
+
+    // A redirect through the sign-in path, which goes straight back to Gmail.
+    const hop = await fetch(`${fakeGoogle.url}/gmail/?hop=redirect`, {
+      headers,
+      redirect: 'manual'
+    })
+    expect(hop.status).toBe(302)
+    const location = hop.headers.get('location') ?? ''
+    expect(location.startsWith('/signin?')).toBe(true)
+    const back = await fetch(`${fakeGoogle.url}${location}`, { headers, redirect: 'manual' })
+    expect(back.status).toBe(302)
+    expect(back.headers.get('location')).toBe('/gmail/')
+
+    // A page on the sign-in path that goes back by script, by meta refresh, or never.
+    for (const kind of ['script', 'meta', 'stuck']) {
+      const pageHop = await fetch(`${fakeGoogle.url}/gmail/?hop=${kind}`, {
+        headers,
+        redirect: 'manual'
+      })
+      expect(pageHop.status).toBe(302)
+      expect(pageHop.headers.get('location')).toBe(`${FAKE_COOKIE_CHECK_PATH}?back=${kind}`)
+      const page = await fetch(`${fakeGoogle.url}${FAKE_COOKIE_CHECK_PATH}?back=${kind}`, {
+        headers
+      })
+      const html = await page.text()
+      expect(html).toContain('Fake cookie check')
+      if (kind === 'script') expect(html).toContain("location.replace('/gmail/')")
+      if (kind === 'meta') expect(html).toContain('http-equiv="refresh" content="0;url=/gmail/"')
+      if (kind === 'stuck') expect(html).not.toContain('/gmail/')
+    }
+    expect(fakeGoogle.state.signInHops).toBe(before + 4)
+
+    // A session that is not signed in gets no hop: it goes to the sign-in page.
+    const signedOut = await fetch(`${fakeGoogle.url}${FAKE_COOKIE_CHECK_PATH}?back=script`, {
+      redirect: 'manual'
+    })
+    expect(signedOut.status).toBe(302)
+    expect(signedOut.headers.get('location')).toBe('/signin')
+    const noHop = await fetch(`${fakeGoogle.url}/gmail/?hop=redirect`, { redirect: 'manual' })
+    expect(noHop.headers.get('location')).toBe('/signin')
   })
 
   it('signs every session out with the control route, and clears the cookie', async () => {

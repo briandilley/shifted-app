@@ -124,6 +124,7 @@ describe('the avatar with no photo', () => {
       unreadFeed: 'primary',
       automaticFeedLearned: false,
       pageProblems: {},
+      checkingSignIn: [],
       ...change
     }
   }

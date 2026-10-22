@@ -29,6 +29,14 @@
  * The control route `POST /control/feed-entry` (or `server.addFeedEntry`) adds one new
  * message to the fake feeds of an address, as when a new email arrives.
  *
+ * The cookie hop: a signed-in Gmail session also passes through Google's sign-in host,
+ * for example when Google sets the cookies of Gmail. `/gmail/?hop=<kind>` imitates it for
+ * a signed-in session. `redirect` answers with a redirect to `/signin`, which redirects
+ * straight back to `/gmail/`. `script` and `meta` redirect to `/signin/check-cookie`, a
+ * page on the fake sign-in path that goes back to `/gmail/` by script or by meta refresh.
+ * `stuck` goes to the same page, which never goes back. `state.signInHops` counts the
+ * visits of a signed-in session to the fake sign-in path.
+ *
  * The fake Calendar page has a button `#notify` that calls
  * `new Notification('Meeting in 10 minutes', ...)`, like a Calendar reminder. The fake
  * Gmail page has a button `#chat-notify` that makes a web notification, like a Google
@@ -124,6 +132,8 @@ export interface FakeGoogleState {
   feedFailure: FakeFeedFailure | null
   /** The sessions that are signed in, by session ID. A `FAKE_SID` cookie with another value is not. */
   sessions: Map<string, FakeSession>
+  /** How many times a signed-in session came to the fake sign-in path (the cookie hop). */
+  signInHops: number
 }
 
 /** The value that adds one message to the fake feeds (see `POST /control/feed-entry`). */
@@ -445,6 +455,43 @@ function fakeGmailLinks(url: URL): string {
     <script>${FAKE_GMAIL_SCRIPT}${notificationScript('chat-notify', FAKE_CHAT_TITLE, { body: 'Are you free for lunch?', tag: 'chat-1' })}</script>`
 }
 
+/** The kinds of cookie hop of `/gmail/?hop=<kind>`. */
+export type FakeCookieHop = 'redirect' | 'script' | 'meta' | 'stuck'
+
+/** The page on the fake sign-in path that a cookie hop shows. */
+export const FAKE_COOKIE_CHECK_PATH = '/signin/check-cookie'
+
+/** Where `/gmail/?hop=<kind>` sends a signed-in session first. */
+function cookieHopLocation(hop: string | null): string | undefined {
+  switch (hop) {
+    case 'redirect':
+      return '/signin?continue=%2Fgmail%2F'
+    case 'script':
+    case 'meta':
+    case 'stuck':
+      return `${FAKE_COOKIE_CHECK_PATH}?back=${hop}`
+    default:
+      return undefined
+  }
+}
+
+/** The page of a cookie hop on the fake sign-in path. It goes back to Gmail, or never. */
+function cookieCheckPage(res: ServerResponse, back: string | null): void {
+  const goBack =
+    back === 'script'
+      ? `<script>setTimeout(() => location.replace('/gmail/'), 200)</script>`
+      : back === 'meta'
+        ? `<meta http-equiv="refresh" content="0;url=/gmail/" />`
+        : ''
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+  res.end(`<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Fake cookie check</title>${goBack}</head>
+  <body><h1 id="cookie-check">Fake cookie check</h1></body>
+</html>
+`)
+}
+
 /** The routes of the fake server. */
 export const routes: Route[] = [
   {
@@ -455,6 +502,11 @@ export const routes: Route[] = [
       const session = currentSession(context)
       if (!session) {
         redirect(res, '/signin', clearCookieHeaders(context))
+        return
+      }
+      const hop = cookieHopLocation(context.url.searchParams.get('hop'))
+      if (hop) {
+        redirect(res, hop)
         return
       }
       // Like Gmail, the account button links to "SignOutOptions" and holds the photo.
@@ -548,6 +600,7 @@ export const routes: Route[] = [
       const { res, state, url } = context
       // Like Google, the sign-in page goes straight to Gmail when the session is signed in.
       if (currentSession(context)) {
+        state.signInHops += 1
         redirect(res, '/gmail/')
         return
       }
@@ -564,6 +617,20 @@ export const routes: Route[] = [
       <button type="submit">Sign in</button>
     </form>`
       )
+    }
+  },
+  {
+    // The page of a cookie hop. A session that is not signed in goes to the sign-in page.
+    method: 'GET',
+    path: FAKE_COOKIE_CHECK_PATH,
+    handler: (context) => {
+      const { res, state, url } = context
+      if (!currentSession(context)) {
+        redirect(res, '/signin', clearCookieHeaders(context))
+        return
+      }
+      state.signInHops += 1
+      cookieCheckPage(res, url.searchParams.get('back'))
     }
   },
   {
@@ -677,6 +744,7 @@ export async function startFakeGoogle(
     feeds: new Map(),
     feedFailure: null,
     sessions: new Map(),
+    signInHops: 0,
     ...initialState
   }
   const serverRoutes = [...routes]

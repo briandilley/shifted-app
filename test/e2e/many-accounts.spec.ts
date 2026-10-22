@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ElectronApplication, Page } from '@playwright/test'
 import { accountBackdrop, type ColorMode } from '../../src/shared/account-colors'
@@ -321,4 +321,83 @@ test('sign out from the context menu clears the session and shows the signed-out
   await signInOnFakePage(shifted, fakeGoogle, TWO)
   await expectFakeGmail(shifted, fakeGoogle, TWO)
   expect(await windowCount(shifted)).toBe(1)
+})
+
+test('the avatar shows the first letter when the saved photo does not load, also when selected', async ({
+  fakeGoogle,
+  userDataDir
+}) => {
+  const first = await launchShifted(fakeGoogle, userDataDir)
+  try {
+    const mainWindow = await mainWindowPage(first)
+    await addAccountAndSignIn(first, mainWindow, fakeGoogle, ONE)
+    const photo = join(userDataDir, 'photos', `${accountId(userDataDir, ONE)}.png`)
+    await expect.poll(() => existsSync(photo)).toBe(true)
+  } finally {
+    await first.close()
+  }
+
+  // The saved photo breaks, for example a file that is not an image. Gmail shows no new
+  // photo, so Shifted keeps the broken one.
+  writeFileSync(join(userDataDir, 'photos', `${accountId(userDataDir, ONE)}.png`), 'not a photo')
+  fakeGoogle.addRoute({
+    method: 'GET',
+    path: '/avatar.png',
+    handler: ({ res }) => {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('No photo')
+    }
+  })
+
+  const second = await launchShifted(fakeGoogle, userDataDir)
+  try {
+    const mainWindow = await mainWindowPage(second)
+    const account = sidebarAccount(mainWindow, ONE)
+    await expect(account).toHaveAttribute('aria-current', 'true')
+    const letter = account.locator('[data-avatar-letter]')
+    await expect(letter).toBeVisible()
+    await expect(letter).toHaveText('O')
+    await expect(account.locator('img')).toHaveCount(0)
+    // The letter is on the account color.
+    expect(await letter.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
+      cssRgb('#1A73E8')
+    )
+  } finally {
+    await second.close()
+  }
+})
+
+test('the address in the top row never goes past the window edge, and has a tooltip', async ({
+  shifted,
+  mainWindow,
+  fakeGoogle
+}) => {
+  const long =
+    'a.very.very.long.address.for.the.top.row.of.shifted.at.the.minimum.window.width.of.nine.hundred.points@a-long-domain-name-example.com'
+  await addAccountAndSignIn(shifted, mainWindow, fakeGoogle, long)
+  await shifted.evaluate(({ BrowserWindow }) => {
+    const main = BrowserWindow.getAllWindows().find(
+      (window) => !window.webContents.getURL().includes('#')
+    )
+    main?.setSize(900, 600)
+  })
+  await expect.poll(() => mainWindow.evaluate(() => window.innerWidth)).toBe(900)
+
+  const selected = mainWindow.locator('[data-selected-account]')
+  await expect(selected).toHaveAttribute('title', long)
+  const layout = await selected.evaluate((element) => {
+    const address = element.lastElementChild as HTMLElement
+    return {
+      right: element.getBoundingClientRect().right,
+      addressRight: address.getBoundingClientRect().right,
+      width: window.innerWidth,
+      cut: address.scrollWidth > address.clientWidth,
+      overflow: getComputedStyle(address).textOverflow
+    }
+  })
+  // 16 points from the right edge, with an ellipsis inside the free space of the top row.
+  expect(layout.right).toBeLessThanOrEqual(layout.width - 16 + 0.5)
+  expect(layout.addressRight).toBeLessThanOrEqual(layout.width - 16 + 0.5)
+  expect(layout.cut).toBe(true)
+  expect(layout.overflow).toBe('ellipsis')
 })

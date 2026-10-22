@@ -8,6 +8,7 @@
 import { nativeImage, type Session } from 'electron'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { isBlankBitmap } from './photo-pixels'
 
 /** The width and height of a saved photo, in pixels. The sidebar shows it at 36 points. */
 export const PHOTO_SIZE = 96
@@ -60,7 +61,10 @@ export class ProfilePhotos {
 
     const image = nativeImage.createFromBuffer(bytes)
     if (image.isEmpty()) return false
-    const png = image.resize({ width: PHOTO_SIZE, height: PHOTO_SIZE, quality: 'best' }).toPNG()
+    const resized = image.resize({ width: PHOTO_SIZE, height: PHOTO_SIZE, quality: 'best' })
+    // A photo that shows nothing would leave an empty ring. The avatar shows the letter.
+    if (isBlankBitmap(resized.toBitmap())) return false
+    const png = resized.toPNG()
 
     mkdirSync(this.dir, { recursive: true })
     const temporaryPath = `${this.path(accountId)}.tmp`

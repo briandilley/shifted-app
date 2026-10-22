@@ -57,6 +57,7 @@ export const MAIN = {
   noAccounts: 'No accounts yet',
   addAccountFirst: 'Add an account first',
   signingIn: 'Signing in…',
+  loading: 'Loading…',
   signedOut: 'This account is signed out.',
   signInAgain: 'Sign in again',
   signIn: 'Sign in',
