@@ -259,3 +259,12 @@ export const MEMORY = {
   noAccounts: 'No accounts yet.',
   megabytes: (kilobytes: number): string => `${Math.round(kilobytes / 1024)} MB`
 } as const
+export const FIND = {
+  label: 'Find in page',
+  previous: 'Previous match',
+  next: 'Next match',
+  close: 'Close find',
+  noMatches: 'No matches',
+  searching: 'Searching…',
+  count: (active: number, total: number): string => `${active} of ${total}`
+}

@@ -77,3 +77,11 @@ Cmd is the Command key on macOS. On Windows and Linux, use Ctrl in place of Cmd.
 | 65  | In a new message, type a misspelled word and right-click it. Make sure that the menu shows suggestions and that a click on one replaces the word. Make sure that Paste works.                                             | 03-8             |                                      |
 | 66  | Right-click an image in a message. Make sure that "Save image" puts it in your Downloads folder.                                                                                                                          | 03-9             |                                      |
 | 67  | Right-click a message in the message list. Make sure that Gmail's own menu shows, and not the menu of Shifted.                                                                                                            | 03-10            |                                      |
+
+## Find in page
+
+| Test | Result |
+| --- | --- |
+| Open a real email with repeated text. Use Cmd+F or Ctrl+F. Make sure that highlights and the count match the email. | Pending |
+| Use Enter, Shift+Enter, the arrow buttons, and Escape. Make sure that each action works and Escape returns focus to the page. | Pending |
+| Use Find in Calendar and a child window. Make sure that each search stays in its page. | Pending |

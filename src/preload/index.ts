@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IpcChannel,
+  type FindResult,
   type BackgroundLoading,
   type ExportFileResult,
   type GoogleApp,
@@ -31,6 +32,11 @@ function listen<T>(channel: string, listener: (value: T) => void): () => void {
  * this preload script. It never gives a page access to Node.js or to the file system.
  */
 const shifted: ShiftedApi = Object.freeze({
+  findInPage: (text: string, direction?: 'next' | 'previous') =>
+    ipcRenderer.send(IpcChannel.findInPage, text, direction),
+  closeFind: () => ipcRenderer.send(IpcChannel.closeFind),
+  onFindResult: (listener: (result: FindResult) => void) => listen(IpcChannel.findResult, listener),
+  onFocusFind: (listener: () => void) => listen(IpcChannel.focusFind, listener),
   platform: process.platform,
   getState: () => ipcRenderer.invoke(IpcChannel.getState) as Promise<ShiftedState>,
   onStateChanged: (listener: (state: ShiftedState) => void) =>

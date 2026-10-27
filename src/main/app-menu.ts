@@ -119,7 +119,22 @@ export function appMenuTemplate(
     shortcutItem(actions, SNOOZE_CHOICES_MENU_ITEM_ID, 'Snooze notifications…')
   ]
   // The Edit menu gives copy, paste, and undo to the Google apps on macOS.
-  const edit: MenuItemConstructorOptions = { role: 'editMenu' }
+  const edit: MenuItemConstructorOptions = {
+    label: 'Edit',
+    submenu: [
+      { role: 'undo' },
+      { role: 'redo' },
+      { type: 'separator' },
+      { role: 'cut' },
+      { role: 'copy' },
+      { role: 'paste' },
+      { role: 'pasteAndMatchStyle' },
+      { role: 'delete' },
+      { role: 'selectAll' },
+      { type: 'separator' },
+      shortcutItem(actions, 'find', 'Find in page…')
+    ]
+  }
   const view: MenuItemConstructorOptions = {
     label: 'View',
     submenu: [

@@ -1,4 +1,12 @@
-import { app, BrowserWindow, net, screen } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  net,
+  screen,
+  webContents,
+  WebContentsView,
+  type WebContents
+} from 'electron'
 import { join } from 'node:path'
 import { optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -7,6 +15,7 @@ import { Accounts } from './accounts'
 import { AppBadge } from './app-badge'
 import { buildSnoozeMenu, setAppMenu, type AppMenuActions } from './app-menu'
 import { ConfigStore } from './config'
+import { FindInPage } from './find-in-page'
 import { emailConfigurationToSelf } from './export-configuration'
 import { gmailMessageUrl, gmailUrl } from './google-urls'
 import { ImportWindow } from './import-window'
@@ -233,6 +242,27 @@ function startShifted(): void {
     screenPicker
   )
   const settings = new SettingsWindow(accounts)
+  const find = new FindInPage((window) => {
+    if (accounts.googlePageSource(window.webContents)) return window.webContents
+    if (!accounts.isMainScreen(window.webContents)) return undefined
+    const state = accounts.state()
+    const account = state.accounts.find((candidate) => candidate.id === state.selectedAccountId)
+    if (
+      !account ||
+      account.status !== 'signed-in' ||
+      account.pageProblems[account.lastGoogleApp] ||
+      account.checkingSignIn.includes(account.lastGoogleApp)
+    )
+      return undefined
+    for (const view of window.contentView.children) {
+      if (!(view instanceof WebContentsView) || !view.getVisible()) continue
+      const source = accounts.googlePageSource(view.webContents)
+      if (source?.accountId === account.id && source.googleApp === account.lastGoogleApp)
+        return view.webContents
+    }
+    return undefined
+  })
+  accounts.subscribe(() => find.refresh())
   const accountPicker = new AccountPicker(accounts)
   const importWindow = new ImportWindow(accounts, () => {
     showMainWindow?.()
@@ -293,8 +323,11 @@ function startShifted(): void {
   }
 
   /** Run the action of a keyboard shortcut. See "Keyboard shortcuts" in `PRODUCT.md`. */
-  const runShortcut = (action: ShortcutAction): void => {
+  const runShortcut = (action: ShortcutAction, source?: WebContents): void => {
     switch (action.kind) {
+      case 'find':
+        find.open(source)
+        return
       case 'select-account':
         accounts.selectAccountAt(action.index)
         return
@@ -326,10 +359,10 @@ function startShifted(): void {
   // A web view gets the keys before the app menu does. Catch the shortcuts in every web
   // contents: the Google views, the child windows, and the screens of Shifted.
   app.on('web-contents-created', (_event, contents) => {
-    catchShortcuts(contents, runShortcut)
+    catchShortcuts(contents, (action) => runShortcut(action, contents))
   })
-  for (const window of BrowserWindow.getAllWindows()) {
-    catchShortcuts(window.webContents, runShortcut)
+  for (const contents of webContents.getAllWebContents()) {
+    catchShortcuts(contents, (action) => runShortcut(action, contents))
   }
 
   // The app menu shows every shortcut. It changes when the snooze or the accounts change.

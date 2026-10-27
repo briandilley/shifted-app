@@ -25,6 +25,7 @@ export type ShortcutAction =
   | { kind: 'google-app'; googleApp: GoogleApp }
   /** Reload the Google app in the content area. */
   | { kind: 'reload' }
+  | { kind: 'find' }
   /** Open the configuration window. */
   | { kind: 'settings' }
   /** Start the add-account flow. */
@@ -67,6 +68,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     accelerator: 'CommandOrControl+Shift+2'
   },
   { id: 'reload', action: { kind: 'reload' }, accelerator: 'CommandOrControl+R' },
+  { id: 'find', action: { kind: 'find' }, accelerator: 'CommandOrControl+F' },
   { id: 'settings', action: { kind: 'settings' }, accelerator: 'CommandOrControl+,' },
   { id: 'add-account', action: { kind: 'add-account' }, accelerator: 'CommandOrControl+Shift+N' },
   { id: 'snooze-choices', action: { kind: 'snooze' }, accelerator: 'CommandOrControl+Shift+S' }

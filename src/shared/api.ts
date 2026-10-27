@@ -363,6 +363,10 @@ export function parseSettingsRequest(value: unknown): SettingsRequest | undefine
 
 /** The functions that the preload script gives to the screens of Shifted. */
 export interface ShiftedApi {
+  findInPage(text: string, direction?: 'next' | 'previous'): void
+  closeFind(): void
+  onFindResult(listener: (result: FindResult) => void): () => void
+  onFocusFind(listener: () => void): () => void
   /** The operating system: `darwin`, `win32`, or `linux`. */
   readonly platform: string
   getState(): Promise<ShiftedState>
@@ -524,6 +528,10 @@ export interface ScreenPickerInfo {
 }
 
 export const IpcChannel = {
+  findInPage: 'shifted:find-in-page',
+  closeFind: 'shifted:close-find',
+  findResult: 'shifted:find-result',
+  focusFind: 'shifted:focus-find',
   getState: 'shifted:get-state',
   stateChanged: 'shifted:state-changed',
   addAccount: 'shifted:add-account',
@@ -580,3 +588,11 @@ export const IMPORT_WINDOW_HASH = 'import'
 
 /** The URL hash of the "Memory use" window. */
 export const MEMORY_WINDOW_HASH = 'memory'
+
+export const FIND_SCREEN_HASH = 'find'
+
+export interface FindResult {
+  text: string
+  activeMatchOrdinal: number
+  matches: number
+}

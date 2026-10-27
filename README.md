@@ -73,6 +73,15 @@ The package is not signed. Signed installers are not part of version 1.
 
 Shifted shows its own new-mail notifications. In Gmail, keep `Settings` > `Desktop notifications` for new mail off. If it is on, you get two notifications for each message.
 
+## Find text in a page
+
+Press Cmd+F on macOS or Ctrl+F on Windows and Linux. The Edit menu also has "Find in page…".
+Type text to find it in the visible Gmail or Calendar page, including an open email.
+A child window searches its own page. Find searches only text that the page loaded.
+
+Press Enter for the next match or Shift+Enter for the previous match. The arrow buttons do the same.
+Press Escape to close the bar and return to the page. An account change or a tab change closes the bar.
+
 ## Known limits
 
 - Passkeys do not work on macOS and Linux. When Google asks for a passkey, click "Try another way".

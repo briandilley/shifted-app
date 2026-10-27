@@ -106,6 +106,7 @@ describe('the shortcut table', () => {
       'CommandOrControl+Shift+1',
       'CommandOrControl+Shift+2',
       'CommandOrControl+R',
+      'CommandOrControl+F',
       'CommandOrControl+,',
       'CommandOrControl+Shift+N',
       'CommandOrControl+Shift+S'
@@ -172,6 +173,18 @@ describe('the shortcut table', () => {
 })
 
 describe('matchShortcut', () => {
+  it('matches Find on each platform and keeps Gmail custom-from keys', () => {
+    for (const platform of PLATFORMS) {
+      const modifiers = platform === 'darwin' ? { meta: true } : { control: true }
+      expect(matchShortcut(press('f', 'KeyF', modifiers), platform)?.action).toEqual({
+        kind: 'find'
+      })
+      expect(
+        matchShortcut(press('f', 'KeyF', { ...modifiers, shift: true }), platform)
+      ).toBeUndefined()
+    }
+  })
+
   it('matches Cmd+2 on macOS and Ctrl+2 on Windows and Linux', () => {
     expect(matchShortcut(press('2', 'Digit2', { meta: true }), 'darwin')?.id).toBe('account-2')
     expect(matchShortcut(press('2', 'Digit2', { control: true }), 'win32')?.id).toBe('account-2')

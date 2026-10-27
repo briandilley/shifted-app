@@ -332,3 +332,20 @@ The person reported that a right-click in Gmail did nothing. Electron shows no c
 - **Spelling.** The menu shows at most 5 suggestions, and "No spelling suggestions" when Chromium has none. "Add to dictionary" calls `session.addWordToSpellCheckerDictionary`. On macOS, the word goes to the dictionary of the operating system.
 - **On macOS, a right-click on a word selects it.** So a link and a word of a message also get "Copy" and "Look up". This is how other macOS apps behave.
 - **No Back, Forward, Reload, or Inspect.** Shifted is not a web browser. Cmd+R reloads the Google app. A right-click on an empty place shows no menu.
+
+## Phase 07: Find in page (2026-10-26)
+
+The person requested Cmd+F and Ctrl+F, an update to the companion prompts, a release, and installation in `/Applications`.
+The companion repository defines the feature in `PRODUCT.md`, `DESIGN.md`, and prompt 07. The read-only snapshot in `docs/spec/` stays unchanged.
+
+The Find bar uses a separate `WebContentsView` above the Google page. This also supports child windows without changing their page structure.
+Electron searches the loaded page with `findInPage` and reports matches through `found-in-page`. Shifted ignores results from earlier requests.
+
+The bar is 440 by 56 points and uses the existing design tokens. A narrow child window limits its width.
+Search ignores case. Enter and Shift+Enter move between matches. Escape or Close clears the highlights and returns focus to the page.
+An account change, a tab change, navigation, sign-out, a crash, or window closure ends the search. Search text stays in memory.
+
+The main process accepts Find messages only from the main frame of its own bar. Search text has a 4096-character limit.
+The sign-in window and other Shifted screens have no Find bar. This keeps Find scoped to the Google page that the person reads.
+
+Shifted attaches shortcuts to existing web contents at startup as well as pages created later. This covers accounts restored before the shortcut handler starts.

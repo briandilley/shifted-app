@@ -5,6 +5,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   IMPORT_WINDOW_HASH,
+  FIND_SCREEN_HASH,
   MAILTO_PICKER_HASH,
   MEMORY_WINDOW_HASH,
   SCREEN_PICKER_HASH,
@@ -12,6 +13,7 @@ import {
   SIGN_IN_SCREEN_HASH
 } from '../../shared/api'
 import App from './App'
+import FindScreen from './FindScreen'
 import ImportScreen from './ImportScreen'
 import MailtoPickerScreen from './MailtoPickerScreen'
 import MemoryScreen from './MemoryScreen'
@@ -33,20 +35,23 @@ const isMailtoPicker = hash === MAILTO_PICKER_HASH
 const isImportWindow = hash === IMPORT_WINDOW_HASH
 const isMemoryWindow = hash === MEMORY_WINDOW_HASH
 
-const screen = isSignInScreen ? (
-  <SignInScreen />
-) : isSettingsScreen ? (
-  <SettingsScreen />
-) : isScreenPicker ? (
-  <ScreenPickerScreen />
-) : isMailtoPicker ? (
-  <MailtoPickerScreen />
-) : isImportWindow ? (
-  <ImportScreen />
-) : isMemoryWindow ? (
-  <MemoryScreen />
-) : (
-  <App />
-)
+const screen =
+  hash === FIND_SCREEN_HASH ? (
+    <FindScreen />
+  ) : isSignInScreen ? (
+    <SignInScreen />
+  ) : isSettingsScreen ? (
+    <SettingsScreen />
+  ) : isScreenPicker ? (
+    <ScreenPickerScreen />
+  ) : isMailtoPicker ? (
+    <MailtoPickerScreen />
+  ) : isImportWindow ? (
+    <ImportScreen />
+  ) : isMemoryWindow ? (
+    <MemoryScreen />
+  ) : (
+    <App />
+  )
 
 createRoot(root).render(<StrictMode>{screen}</StrictMode>)
